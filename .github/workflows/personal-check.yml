@@ -1,0 +1,98 @@
+name: Check personal SiYuan changes
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-tools:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test source snapshots and release ownership
+        run: python -m unittest discover -s scripts -p "test_personal_*.py"
+      - name: Check workflows
+        if: runner.os == 'Linux'
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/personal-*.yml
+
+  recovery:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.inputs.outputs.version }}
+      unlock_ref: ${{ steps.inputs.outputs.unlock_ref }}
+      ios_ref: ${{ steps.inputs.outputs.ios_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: siyuan-note
+          persist-credentials: false
+      - name: Read pinned build inputs
+        id: inputs
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          root = Path('siyuan-note')
+          version = json.loads((root / 'app/package.json').read_text())['version']
+          pins = json.loads((root / 'scripts/personal-build-inputs.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('version=v' + version + '\n')
+              for name in ['unlock', 'ios']:
+                  value = pins[name + '_commit']
+                  if not re.fullmatch(r'[0-9a-f]{40}', value):
+                      raise ValueError('Build inputs must be pinned to commit SHAs')
+                  output.write(name + '_ref=' + value + '\n')
+          PY
+      - uses: ./siyuan-note/.github/actions/prepare-personal-build
+        with:
+          version: ${{ steps.inputs.outputs.version }}
+          unlock_ref: ${{ steps.inputs.outputs.unlock_ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: siyuan-note/siyuan/kernel/go.mod
+          cache-dependency-path: siyuan-note/siyuan/kernel/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test listener and session identity
+        working-directory: siyuan-note/siyuan/kernel
+        run: |
+          go test -race -timeout 120s ./server/mobiletransport
+          go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'
+          go test -vet=off -tags fts5 ./mobile -run '^$'
+      - name: Verify unlock patches
+        run: bash unlock-patches/scripts/check-account-free.sh siyuan-note/siyuan
+      - name: Test frontend recovery
+        working-directory: siyuan-note/siyuan/app
+        run: |
+          npm install -g "$(node -p 'require("./package.json").packageManager')"
+          pnpm install --frozen-lockfile --ignore-scripts
+          node --test tests/ios*.test.mjs
+          pnpm run lint
+
+  ios:
+    needs: recovery
+    uses: ./.github/workflows/personal-ios.yml
+    with:
+      version: ${{ needs.recovery.outputs.version }}
+      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
+      ios_ref: ${{ needs.recovery.outputs.ios_ref }}

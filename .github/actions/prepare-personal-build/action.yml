@@ -1,0 +1,33 @@
+name: Prepare personal build source
+description: Snapshot the current fork and apply a pinned unlock patch set
+inputs:
+  version:
+    required: true
+    description: Source package version
+  unlock_ref:
+    required: true
+    description: Full appdev/siyuan-unlock commit SHA
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: appdev/siyuan-unlock
+        ref: ${{ inputs.unlock_ref }}
+        path: unlock-patches
+        persist-credentials: false
+        sparse-checkout: |
+          patches
+          scripts
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Prepare source and verify patches
+      shell: bash
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+      run: |
+        python siyuan-note/scripts/prepare-personal-build.py \
+          --source siyuan-note --patch-repo unlock-patches \
+          --destination siyuan-note/siyuan --version "$BUILD_VERSION"
+        mkdir -p go

@@ -1,0 +1,173 @@
+name: Release our SiYuan source
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Source version, such as v3.8.5
+        required: true
+        type: string
+      release_tag:
+        description: Our release tag, such as v3.8.5-unlock.1
+        required: true
+        type: string
+      unlock_ref:
+        description: Full commit SHA from appdev/siyuan-unlock (optional override of scripts/personal-build-inputs.json)
+        required: false
+        type: string
+      ios_ref:
+        description: Full commit SHA from Anemone95/siyuan-ios, including our recovery changes (optional override of scripts/personal-build-inputs.json)
+        required: false
+        type: string
+
+      android_ref:
+        description: Full siyuan-note/siyuan-android commit SHA (optional override of scripts/personal-build-inputs.json)
+        required: false
+        type: string
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.repository == 'Anemone95/siyuan-unlock'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check Android signing configuration
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$ANDROID_SIGNING_SHA256"
+      - name: Create or validate release draft
+        run: python scripts/personal-release.py
+        id: draft
+    env:
+      BUILD_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      UNLOCK_REF: ${{ inputs.unlock_ref }}
+      IOS_REF: ${{ inputs.ios_ref }}
+      ANDROID_REF: ${{ inputs.android_ref }}
+      ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      unlock_ref: ${{ steps.draft.outputs.unlock_ref }}
+      ios_ref: ${{ steps.draft.outputs.ios_ref }}
+      android_ref: ${{ steps.draft.outputs.android_ref }}
+  desktop:
+    needs: prepare
+    uses: ./.github/workflows/personal-desktop.yml
+    with:
+      version: ${{ inputs.version }}
+      unlock_ref: ${{ needs.prepare.outputs.unlock_ref }}
+    secrets: inherit
+  android:
+    needs: prepare
+    uses: ./.github/workflows/personal-android.yml
+    with:
+      version: ${{ inputs.version }}
+      unlock_ref: ${{ needs.prepare.outputs.unlock_ref }}
+      android_ref: ${{ needs.prepare.outputs.android_ref }}
+    secrets: inherit
+  ios:
+    needs: prepare
+    uses: ./.github/workflows/personal-ios.yml
+    with:
+      version: ${{ inputs.version }}
+      unlock_ref: ${{ needs.prepare.outputs.unlock_ref }}
+      ios_ref: ${{ needs.prepare.outputs.ios_ref }}
+    secrets: inherit
+  docker:
+    needs: prepare
+    uses: ./.github/workflows/personal-docker.yml
+    with:
+      version: ${{ inputs.version }}
+      release_tag: ${{ inputs.release_tag }}
+      unlock_ref: ${{ needs.prepare.outputs.unlock_ref }}
+    secrets: inherit
+
+    permissions:
+      contents: read
+      packages: write
+  publish:
+    needs: [prepare, desktop, android, ios, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify draft provenance
+        run: python scripts/personal-release.py --verify-only
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: inputs-*
+          path: build-inputs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: assets-*
+          path: release-assets
+      - name: Attach exact build inputs
+        run: |
+          python - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          files = list(Path('build-inputs').glob('*/siyuan-build-inputs.json'))
+          platforms = {path.parent.name.split('-')[1] for path in files}
+          if platforms != {'desktop', 'android', 'ios', 'docker'}:
+              raise ValueError('Missing build provenance artifacts')
+          for path in files:
+              data = json.loads(path.read_text())
+              if data['source_commit'] != os.environ['GITHUB_SHA'] or data['unlock_commit'] != os.environ['UNLOCK_REF'].lower() or data['source_edits']:
+                  raise ValueError('Build source mismatch: ' + str(path))
+              if path.parent.name == 'inputs-ios' and data['ios_commit'] != os.environ['IOS_REF'].lower():
+                  raise ValueError('iOS source mismatch')
+              if path.parent.name == 'inputs-android' and (data['android_commit'] != os.environ['ANDROID_REF'].lower() or data['android_signer_sha256'] != os.environ['ANDROID_SIGNING_SHA256'].lower()):
+                  raise ValueError('Android source or signer mismatch')
+              path.rename(Path('build-inputs') / (path.parent.name + '.json'))
+          PYCODE
+          gh release upload "$RELEASE_TAG" build-inputs/*.json --clobber
+      - name: Upload verified build assets
+        run: |
+          python - <<'PYCODE'
+          import os, subprocess
+          from pathlib import Path
+          files = sorted(path for path in Path('release-assets').rglob('*') if path.is_file())
+          if not files or any(path.stat().st_size == 0 for path in files):
+              raise ValueError('Missing or empty release artifact')
+          if len({path.name for path in files}) != len(files):
+              raise ValueError('Duplicate release artifact name')
+          subprocess.run(['gh', 'release', 'upload', os.environ['RELEASE_TAG'], '--clobber', *map(str, files)], check=True)
+          PYCODE
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote completed Docker build
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker buildx imagetools create --tag "$image:latest" "$image:$RELEASE_TAG"
+      - name: Publish completed release
+        run: gh release edit "$RELEASE_TAG" --draft=false
+    permissions:
+      contents: write
+      packages: write
+    env:
+      BUILD_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      UNLOCK_REF: ${{ needs.prepare.outputs.unlock_ref }}
+      IOS_REF: ${{ needs.prepare.outputs.ios_ref }}
+      ANDROID_REF: ${{ needs.prepare.outputs.android_ref }}
+      ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+concurrency:
+  group: personal-release-${{ inputs.release_tag }}
+  cancel-in-progress: false

@@ -1,0 +1,143 @@
+name: Personal ios build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      unlock_ref:
+        required: true
+        type: string
+      ios_ref:
+        required: true
+        type: string
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+
+    steps:
+      - name: Verify Xcode toolchain
+        run: xcodebuild -version
+      - uses: actions/checkout@v4
+        with:
+          path: siyuan-note
+
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./siyuan-note/.github/actions/prepare-personal-build
+        with:
+          version: ${{ inputs.version }}
+          unlock_ref: ${{ inputs.unlock_ref }}
+      - name: Fetch our pinned iOS source
+        uses: actions/checkout@v4
+        with:
+          repository: Anemone95/siyuan-ios
+          ref: ${{ inputs.ios_ref }}
+          path: siyuan-note/siyuan-ios
+          persist-credentials: false
+      - name: Verify iOS recovery source and record revision
+        shell: bash
+        working-directory: siyuan-note/siyuan-ios
+        run: |
+          test -f siyuan-ios/KernelRecoveryCoordinator.swift
+          grep -q 'whenAccepting' siyuan-ios/ViewController.swift
+          python -c 'import json,subprocess; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["ios_commit"]=subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip(); p.write_text(json.dumps(d,indent=2)+"\n")'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ github.workspace }}/siyuan-note/siyuan/kernel/go.mod
+          cache-dependency-path: "**/*.sum"
+      - run: go version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Node pnpm
+        run: npm install -g "$(node -p 'require("./package.json").packageManager')"
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+        shell: bash
+      - name: Verify account-free sync
+        shell: bash
+        working-directory: ${{ github.workspace }}/siyuan-note
+        run: bash ../unlock-patches/scripts/check-account-free.sh siyuan
+
+      - name: Check listener and session recovery
+        shell: bash
+        working-directory: siyuan-note/siyuan/kernel
+        run: |
+          go test -race -timeout 120s ./server/mobiletransport
+          go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'
+      - name: Install Node Dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+      - name: Check recovery protocol and frontend types
+        shell: bash
+        working-directory: siyuan-note/siyuan/app
+        run: |
+          node --test tests/ios*.test.mjs
+          pnpm run typecheck
+          pnpm run lint
+      - name: Building UI
+        run: pnpm run build
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+      - name: gomobile
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/kernel
+        run: |
+          mobile_version=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile_version"
+          go install "golang.org/x/mobile/cmd/gobind@$mobile_version"
+          gomobile init
+
+      - name: Building ios Kernel
+        run: |
+          gomobile bind --tags "fts5 sqlcipher" -ldflags '-s -w' -v -target=ios/arm64 -o "../ios/iosk.xcframework" ./
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/kernel/mobile
+        env:
+          GO111MODULE: on
+          CGO_ENABLED: 1
+
+      - name: ios assets
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app/
+        run: |
+          mkdir -p ${{ github.workspace }}/siyuan-note/siyuan-ios/app/
+          cp -r ./appearance ./guide ./stage ./changelogs ${{ github.workspace }}/siyuan-note/siyuan-ios/app/
+
+      - name: Check Swift recovery state
+        working-directory: siyuan-note/siyuan-ios
+        run: |
+          swiftc siyuan-ios/KernelRecoveryCoordinator.swift tests/recovery/main.swift -o ../swift-recovery-tests
+          ../swift-recovery-tests
+      - name: Building iOS
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan-ios
+        run: |
+          mkdir -p ../siyuan-ios-out/Payload
+          xcodebuild -project siyuan-ios.xcodeproj -scheme siyuan-ios -sdk iphoneos -configuration Release -destination generic/platform=iOS CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon MARKETING_VERSION="${BUILD_VERSION#v}" -derivedDataPath ../siyuan-ios-out build
+          cp -R ../siyuan-ios-out/Build/Products/Release-iphoneos/siyuan-ios.app ../siyuan-ios-out/Payload/
+          test -d ../siyuan-ios-out/Payload/siyuan-ios.app/PlugIns/ShorthandShare.appex
+          ditto -c -k --norsrc --keepParent ../siyuan-ios-out/Payload "../siyuan-ios-out/siyuan-${BUILD_VERSION}-ios.ipa"
+
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+      - name: Upload ios.ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-ios
+          path: siyuan-note/siyuan-ios-out/siyuan-*-ios.ipa
+          if-no-files-found: error
+      - name: Save build inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: inputs-ios
+          path: siyuan-note/siyuan-build-inputs.json
+          if-no-files-found: warn
+        if: always()
+permissions:
+  contents: read

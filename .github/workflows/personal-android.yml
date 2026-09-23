@@ -1,0 +1,182 @@
+name: Personal android build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      unlock_ref:
+        required: true
+        type: string
+      android_ref:
+        required: true
+        type: string
+    secrets:
+      KEYSTORE:
+        required: true
+      KEYSTORE_PASSWORD:
+        required: true
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: siyuan-note
+
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./siyuan-note/.github/actions/prepare-personal-build
+        with:
+          version: ${{ inputs.version }}
+          unlock_ref: ${{ inputs.unlock_ref }}
+      - name: Fetch pinned Android source
+        uses: actions/checkout@v4
+        with:
+          repository: siyuan-note/siyuan-android
+          ref: ${{ inputs.android_ref }}
+          path: siyuan-note/siyuan-android
+          persist-credentials: false
+      - name: Prepare Android shell
+        shell: bash
+        run: |
+          cd siyuan-note/siyuan-android
+          for patch in debug-build dual-package; do
+            git apply --check --ignore-whitespace "../../unlock-patches/patches/siyuan-android/$patch.patch"
+            git apply --ignore-whitespace "../../unlock-patches/patches/siyuan-android/$patch.patch"
+          done
+          mkdir -p app/src/main/assets app/libs
+          python -c 'import json,subprocess; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_commit"]=subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip(); p.write_text(json.dumps(d,indent=2)+"\n")'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ github.workspace }}/siyuan-note/siyuan/kernel/go.mod
+          cache-dependency-path: "**/*.sum"
+      - run: go version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Node pnpm
+        run: npm install -g "$(node -p 'require("./package.json").packageManager')"
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+        shell: bash
+      - name: Verify account-free sync
+        shell: bash
+        working-directory: ${{ github.workspace }}/siyuan-note
+        run: bash ../unlock-patches/scripts/check-account-free.sh siyuan
+
+      - name: Check listener and session recovery
+        shell: bash
+        working-directory: siyuan-note/siyuan/kernel
+        run: |
+          go test -race -timeout 120s ./server/mobiletransport
+          go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'
+      - name: Install Node Dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+      - name: Check recovery protocol and frontend types
+        shell: bash
+        working-directory: siyuan-note/siyuan/app
+        run: |
+          node --test tests/ios*.test.mjs
+          pnpm run typecheck
+          pnpm run lint
+      - name: Building UI
+        run: pnpm run build
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app
+
+      - name: Set up java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned Android toolchain
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          printf 'ANDROID_NDK_HOME=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: gomobile
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/kernel
+        run: |
+          mobile_version=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile_version"
+          go install "golang.org/x/mobile/cmd/gobind@$mobile_version"
+          gomobile init
+
+      - name: Building Android Kernel
+        run: |
+          gomobile bind --tags "fts5 sqlcipher" -androidapi 21 -target='android/arm64' -ldflags '-s -w' -v -o "../../../siyuan-android/app/libs/kernel.aar" ./
+          test -s ../../../siyuan-android/app/libs/kernel.aar
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/kernel/mobile
+        env:
+          GO111MODULE: on
+          CGO_ENABLED: 1
+
+      - name: android assets
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan/app/
+        run: |
+          zip -r ${{ github.workspace }}/siyuan-note/siyuan-android/app/src/main/assets/app.zip ./appearance ./guide ./stage ./changelogs
+
+      - name: Decode Keystore
+        id: decode_keystore
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: "siyuan.jks"
+          fileDir: ${{ github.workspace }}/siyuan-note/siyuan-android/keystore
+          encodedString: ${{ secrets.KEYSTORE }}
+
+      - name: Building Android
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan-android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleGoogleplayRelease :app:assembleAppdevRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+      - name: Verify Android package IDs
+        working-directory: ${{ github.workspace }}/siyuan-note/siyuan-android
+        run: |
+          original_apk=$(find app/build/outputs/apk/googleplay/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
+          appdev_apk=$(find app/build/outputs/apk/appdev/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
+          aapt=$(find "${ANDROID_HOME}/build-tools" -type f -name aapt -print | sort -V | tail -n 1)
+
+          test -n "${original_apk}" && test -n "${appdev_apk}" && test -n "${aapt}"
+          "${aapt}" dump badging "${original_apk}" | grep -Fq "package: name='org.b3log.siyuan'"
+          "${aapt}" dump badging "${appdev_apk}" | grep -Fq "package: name='com.appdev.siyuan'"
+          apksigner="$(dirname "$aapt")/apksigner"
+          for apk in "$original_apk" "$appdev_apk"; do
+            "$apksigner" verify --print-certs "$apk" > signer.txt
+            grep -Fqi "Signer #1 certificate SHA-256 digest: $ANDROID_SIGNING_SHA256" signer.txt
+          done
+          python -c 'import json,os; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_signer_sha256"]=os.environ["ANDROID_SIGNING_SHA256"].lower(); p.write_text(json.dumps(d,indent=2)+"\n")'
+          mkdir -p ../release-assets
+          cp "$original_apk" "../release-assets/siyuan-unlock-${BUILD_VERSION}-android-arm64.apk"
+          cp "$appdev_apk" "../release-assets/siyuan-unlock-${BUILD_VERSION}-android-arm64-appdev.apk"
+
+        env:
+          ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+          BUILD_VERSION: ${{ inputs.version }}
+      - name: Upload signed Android APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-android
+          path: siyuan-note/release-assets/*.apk
+          if-no-files-found: error
+      - name: Save build inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: inputs-android
+          path: siyuan-note/siyuan-build-inputs.json
+          if-no-files-found: warn
+        if: always()
+permissions:
+  contents: read
