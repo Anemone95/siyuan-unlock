@@ -23,11 +23,13 @@ mv appearance stage guide /artifacts/
 if [ -d changelogs ]; then mv changelogs /artifacts/; fi
 EORUN
 
-FROM golang:1.26-alpine AS go-build
+FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.7.0@sha256:010d4b66aed389848b0694f91c7aaee9df59a6f20be7f5d12e53663a37bd14e2 AS xx
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS go-build
+COPY --from=xx / /
 
 RUN <<EORUN
 #!/bin/sh -e
-apk add --no-cache gcc musl-dev
+apk add --no-cache clang lld
 go env -w GO111MODULE=on
 go env -w CGO_ENABLED=1
 EORUN
@@ -38,8 +40,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/g
     go mod download
 
 ADD kernel/ .
+ARG TARGETPLATFORM
+RUN xx-apk add --no-cache gcc musl-dev
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg \
-    go build -tags "fts5 sqlcipher" -ldflags "-s -w"
+    xx-go build -o kernel -tags "fts5 sqlcipher" -ldflags "-s -w" && xx-verify kernel
 
 FROM alpine:latest
 LABEL maintainer="Liang Ding<845765@qq.com>"

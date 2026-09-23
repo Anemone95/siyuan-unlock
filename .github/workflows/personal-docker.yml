@@ -1,6 +1,16 @@
 name: Personal docker build
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Source version, such as v3.8.5
+        required: true
+        type: string
+      unlock_ref:
+        description: Full appdev/siyuan-unlock commit SHA
+        required: true
+        type: string
   workflow_call:
     inputs:
       version:
@@ -70,8 +80,8 @@ jobs:
           if [ "$PUSH_IMAGE" = "true" ]; then output_args+=(--push); fi
           docker buildx build "${output_args[@]}" --platform linux/amd64,linux/arm64,linux/arm/v7 --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$image:$RELEASE_TAG" .
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          PUSH_IMAGE: ${{ inputs.push_image }}
+          RELEASE_TAG: ${{ inputs.release_tag || format('ci-{0}', github.run_id) }}
+          PUSH_IMAGE: ${{ inputs.push_image || false }}
       - name: Save build inputs
         uses: actions/upload-artifact@v4
         with:
