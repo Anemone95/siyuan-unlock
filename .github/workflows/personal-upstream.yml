@@ -13,6 +13,7 @@ on:
 permissions:
   contents: write
   actions: write
+  issues: write
 
 concurrency:
   group: personal-upstream-release
@@ -36,6 +37,7 @@ jobs:
       - name: Merge the official release tag and dispatch our release
         env:
           GH_TOKEN: ${{ github.token }}
+          COPILOT_AGENT_TOKEN: ${{ secrets.COPILOT_AGENT_TOKEN }}
           CHECK_ONLY: ${{ inputs.check_only || false }}
           SYNC_KEY_PRESENT: ${{ secrets.UPSTREAM_SYNC_SSH_KEY != '' }}
         run: |

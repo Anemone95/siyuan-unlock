@@ -2,6 +2,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -137,6 +138,42 @@ class UpstreamMergeTest(unittest.TestCase):
                 SYNC.synchronize(self.source)
             publish.assert_not_called()
         self.assertEqual(self.git(self.origin, "rev-parse", "master"), self.start)
+
+    def test_merge_conflict_is_delegated_with_exact_context_before_any_push(self):
+        (self.source / "common.txt").write_text("personal conflict\n")
+        self.commit(self.source, "Conflict fixture")
+        base = self.git(self.source, "rev-parse", "HEAD")
+        merge, command = SYNC.merge_tag, subprocess.check_output
+        contexts = []
+
+        def output(args, **kwargs):
+            if args[0] == sys.executable:
+                contexts.append(json.loads(kwargs["input"]))
+                return "Copilot PR requested"
+            return command(args, **kwargs)
+
+        responses = [{"tag_name": "v3.8.6", "draft": False, "prerelease": False}, [],
+                     {"object": {"type": "commit", "sha": self.stable}},
+                     {"object": {"type": "commit", "sha": "d" * 40}}]
+        with patch.object(SYNC, "api", side_effect=responses), patch.object(SYNC, "gh", return_value="[[]]"), \
+                patch.object(SYNC, "merge_tag", side_effect=lambda root, url, *args: merge(root, str(self.upstream), *args)), \
+                patch.object(subprocess, "check_output", side_effect=output), patch.object(SYNC, "publish") as publish:
+            self.assertEqual(SYNC.synchronize(self.source), "Copilot PR requested")
+            publish.assert_not_called()
+        self.assertEqual(contexts, [{"version": "v3.8.6", "upstream_commit": self.stable, "base_commit": base,
+                                     "android_commit": "d" * 40, "files": ["common.txt"]}])
+        self.assertEqual(self.git(self.origin, "rev-parse", "master"), self.start)
+
+    def test_other_git_errors_are_not_classified_as_merge_conflicts(self):
+        responses = [{"tag_name": "v3.8.6", "draft": False, "prerelease": False}, [],
+                     {"object": {"type": "commit", "sha": self.stable}},
+                     {"object": {"type": "commit", "sha": "d" * 40}}]
+        error = subprocess.CalledProcessError(1, ["git", "fetch"])
+        with patch.object(SYNC, "api", side_effect=responses), patch.object(SYNC, "gh", return_value="[[]]"), \
+                patch.object(SYNC, "merge_tag", side_effect=error), patch.object(SYNC, "publish") as publish:
+            with self.assertRaises(subprocess.CalledProcessError):
+                SYNC.synchronize(self.source)
+            publish.assert_not_called()
 
     def test_concurrent_master_update_rejects_both_push_refs_and_dispatch(self):
         self.merge()

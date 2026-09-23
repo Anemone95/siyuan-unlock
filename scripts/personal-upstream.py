@@ -101,6 +101,8 @@ def publish(root, version, tag):
 
 
 def synchronize(root, check_only=False):
+    if check_only and os.environ.get("COPILOT_AGENT_TOKEN"):
+        print(subprocess.check_output([sys.executable, str(root / "scripts/personal-copilot.py"), "--check-access"], text=True).strip())
     release = api(f"repos/{UPSTREAM}/releases/latest")
     pages = json.loads(gh("api", f"repos/{REPOSITORY}/releases?per_page=100", "--paginate", "--slurp"))
     refs = api(f"repos/{REPOSITORY}/git/matching-refs/tags/{release['tag_name']}-unlock.")
@@ -113,7 +115,18 @@ def synchronize(root, check_only=False):
     android_commit = tag_commit("siyuan-note/siyuan-android", version)
     if check_only:
         return f"Would merge {UPSTREAM}@{version} ({upstream_commit}) into master and publish {tag}."
-    commit = merge_tag(root, "https://github.com/" + UPSTREAM + ".git", version, upstream_commit, android_commit)
+    try:
+        commit = merge_tag(root, "https://github.com/" + UPSTREAM + ".git", version, upstream_commit, android_commit)
+    except subprocess.CalledProcessError:
+        conflicts = subprocess.check_output(["git", "-C", str(root), "diff", "--name-only", "--diff-filter=U", "-z"],
+                                            text=True).split("\0")
+        conflicts = [path for path in conflicts if path]
+        if not conflicts:
+            raise
+        context = {"version": version, "upstream_commit": upstream_commit, "android_commit": android_commit,
+                   "base_commit": git(root, "rev-parse", "HEAD"), "files": conflicts}
+        return subprocess.check_output([sys.executable, str(root / "scripts/personal-copilot.py")],
+                                       input=json.dumps(context), text=True).strip()
     check_patches(root, version)
     publish(root, version, tag)
     return f"Merged {version} into master at {commit}; dispatched release {tag}."

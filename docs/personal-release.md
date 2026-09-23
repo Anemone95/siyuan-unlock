@@ -21,7 +21,7 @@
 5. 原子推送 `master` 和个人发布标签 `vX.Y.Z-unlock.1`，以普通快进检查保护远端并发修改。
 6. 以个人发布标签作为 `workflow_dispatch` 的 ref，启动四平台构建。所有平台校验通过后公开 Release。
 
-已有个人 Release、草稿或发布标签的版本会跳过。合并冲突、移动端 tag 缺失、补丁不兼容或并发推送冲突均报告失败；维护者处理后可重新执行同步。已有发布任务使用 GitHub 的重新运行失败任务继续；若已推送标签但 dispatch 未成功，可针对该标签手动启动：
+已有个人 Release、草稿或发布标签的版本会跳过。真实的 Git 合并冲突交给 Copilot 创建修复 PR，维护者确认合并后继续同步。移动端 tag 缺失、补丁不兼容或并发推送冲突会报告失败；维护者处理后可重新执行同步。已有发布任务使用 GitHub 的重新运行失败任务继续；若已推送标签但 dispatch 未成功，可针对该标签手动启动：
 
 ```sh
 gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f release_tag=vX.Y.Z-unlock.1
@@ -30,6 +30,14 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 自动 Git 推送使用仅授权本仓库的写入 deploy key，私钥保存在 `UPSTREAM_SYNC_SSH_KEY` Actions secret 中。工作流调度使用 `GITHUB_TOKEN` 的 `actions: write` 权限。[GitHub 工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 
 2026-09-23 核验时，官方 `v3.8.5` tag 与个人源码基线均为 `60a4387cc1ce0cd0c7a61c2343e5a6a020758c0a`；该基线后的提交均为个人恢复功能和发布流程修改。
+
+## Copilot 冲突处理
+
+`scripts/personal-copilot.py` 使用 GitHub 原生 Copilot cloud agent。同步检测到未合并文件后，会把版本、准确 tag 提交、个人基线和冲突文件写入 Issue，分配给 Copilot，并要求生成供维护者审核的修复 PR。同一上游提交复用已有任务；已关闭任务保留记录，由维护者从既有代理任务或 PR 继续处理。修复过程保留事件驱动恢复、编辑状态与 session 身份语义。
+
+仓库的 Issues 已启用，Copilot 已出现在可分配代理列表。自动分配需要仓库 secret `COPILOT_AGENT_TOKEN`，保存仅选择本仓库的 fine-grained 用户令牌，授予 Metadata 读取权限，以及 Actions、Contents、Issues、Pull requests 读写权限。该用户需要拥有可用的 Copilot cloud agent 订阅及仓库访问权。[GitHub Copilot API 的认证要求](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-via-the-api)
+
+配置后，手动运行同步工作流并选中 `check_only`，会核验该令牌对应的 Copilot 账户和仓库访问。Copilot PR 的 CI 按 GitHub 设置执行，默认情况下维护者在 PR 中批准工作流运行；检查和人工评审完成后合并，下一次同步检查接续四平台发布。[GitHub Copilot 的 PR 工作流规则](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-on-github#managing-github-actions-workflow-runs)
 
 ## 手动同步与固定依赖
 
@@ -107,4 +115,4 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-android.yml` 和 `personal-docker.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，分别验证 Android 工具链与签名、三种架构的容器构建。Docker 独立入口仅执行构建验证。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
 
-本地核验包括：27 项发布与上游同步回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败和并发推送保护。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
+本地核验包括：37 项发布、上游同步与 Copilot 分配回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败和并发推送保护；Copilot 回归覆盖实际冲突上下文、任务去重、外部 Issue 隔离、缺失令牌和分配失败。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
