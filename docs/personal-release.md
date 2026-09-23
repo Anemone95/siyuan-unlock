@@ -87,4 +87,6 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 手动运行该检查并勾选 `full_build`，还会构建桌面、自签名 Android 和三种架构的容器镜像。产物保存在 Actions artifacts，容器构建采用本地缓存输出，用于四平台发布前验证。
 
+`personal-android.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，适合验证 Android 工具链与签名。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
+
 本地核验包括：14 项发布工具回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 通过手动入口发布；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。

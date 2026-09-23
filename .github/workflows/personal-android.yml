@@ -1,6 +1,20 @@
 name: Personal android build
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Source version, such as v3.8.5
+        required: true
+        type: string
+      unlock_ref:
+        description: Full appdev/siyuan-unlock commit SHA
+        required: true
+        type: string
+      android_ref:
+        description: Full siyuan-note/siyuan-android commit SHA
+        required: true
+        type: string
   workflow_call:
     inputs:
       version:
@@ -100,6 +114,8 @@ jobs:
           cache: "gradle"
 
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
       - name: Install pinned Android toolchain
         run: |
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
@@ -145,6 +161,7 @@ jobs:
       - name: Verify Android package IDs
         working-directory: ${{ github.workspace }}/siyuan-note/siyuan-android
         run: |
+          [[ "$ANDROID_SIGNING_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
           original_apk=$(find app/build/outputs/apk/googleplay/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
           appdev_apk=$(find app/build/outputs/apk/appdev/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
           aapt=$(find "${ANDROID_HOME}/build-tools" -type f -name aapt -print | sort -V | tail -n 1)

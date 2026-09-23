@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: personal-check-${{ github.ref }}
-  cancel-in-progress: true
+  group: personal-check-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   build-tools:
