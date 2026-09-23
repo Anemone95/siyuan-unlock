@@ -158,30 +158,13 @@ jobs:
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      - name: Verify Android package IDs
+      - name: Verify Android package identities and signatures
         working-directory: ${{ github.workspace }}/siyuan-note/siyuan-android
-        run: |
-          [[ "$ANDROID_SIGNING_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]
-          original_apk=$(find app/build/outputs/apk/googleplay/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
-          appdev_apk=$(find app/build/outputs/apk/appdev/release -maxdepth 1 -type f -name 'siyuan-*.apk' -print -quit)
-          aapt=$(find "${ANDROID_HOME}/build-tools" -type f -name aapt -print | sort -V | tail -n 1)
-
-          test -n "${original_apk}" && test -n "${appdev_apk}" && test -n "${aapt}"
-          "${aapt}" dump badging "${original_apk}" | grep -Fq "package: name='org.b3log.siyuan'"
-          "${aapt}" dump badging "${appdev_apk}" | grep -Fq "package: name='com.appdev.siyuan'"
-          apksigner="$(dirname "$aapt")/apksigner"
-          for apk in "$original_apk" "$appdev_apk"; do
-            "$apksigner" verify --print-certs "$apk" > signer.txt
-            grep -Fqi "Signer #1 certificate SHA-256 digest: $ANDROID_SIGNING_SHA256" signer.txt
-          done
-          python -c 'import json,os; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_signer_sha256"]=os.environ["ANDROID_SIGNING_SHA256"].lower(); p.write_text(json.dumps(d,indent=2)+"\n")'
-          mkdir -p ../release-assets
-          cp "$original_apk" "../release-assets/siyuan-unlock-${BUILD_VERSION}-android-arm64.apk"
-          cp "$appdev_apk" "../release-assets/siyuan-unlock-${BUILD_VERSION}-android-arm64-appdev.apk"
-
         env:
           ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
           BUILD_VERSION: ${{ inputs.version }}
+        run: python ../scripts/verify-android-artifacts.py --source . --sdk "$ANDROID_HOME" --version "$BUILD_VERSION"
+
       - name: Upload signed Android APKs
         uses: actions/upload-artifact@v4
         with:
