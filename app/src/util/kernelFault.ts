@@ -1,10 +1,12 @@
 import {Constants} from "../constants";
+import {iosKernelError} from "./iosKernelRecovery";
 import {Dialog} from "../dialog";
 import {forceQuit, isHostQuitStarted} from "../dialog/processSystem";
 import {isBrowser, isKernelInContainer, isMobile} from "./functions";
 import {isInIOS, isInMobileApp} from "../protyle/util/compatibility";
 
 export const kernelError = () => {
+    if (iosKernelError()) { return; }
     if (isHostQuitStarted() || document.querySelector("#errorLog")) {
         return;
     }

@@ -2463,6 +2463,7 @@ export class BacklinkContent extends Model {
     }
 
     public destroy() {
+        super.destroy();
         if (this.destroyed) {
             return;
         }

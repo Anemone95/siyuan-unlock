@@ -1,4 +1,5 @@
 import {Constants} from "../constants";
+import {iosRecovery, iosTransactionFetch} from "./iosKernelRecovery";
 /// #if !BROWSER
 import {ipcRenderer} from "electron";
 /// #endif
@@ -45,7 +46,7 @@ export const fetchPost = ((
         init.signal = signal;
     }
     let isGetFile202 = false;
-    return withFetchTimeout((requestSignal) => fetch(url, {...init, signal: requestSignal}).then((response) => {
+    return withFetchTimeout((requestSignal) => (iosTransactionFetch(url, {...init, signal: requestSignal}) || fetch(url, {...init, signal: requestSignal})).then((response) => {
         switch (response.status) {
             case 403:
             case 404:
@@ -55,6 +56,7 @@ export const fetchPost = ((
                     code: -response.status,
                 };
             case 401:
+                if (iosRecovery()) { kernelError(); return {data: null, msg: response.statusText, code: -401}; }
                 // 返回鉴权失败的话直接刷新页面，避免用户在当前页面操作 https://github.com/siyuan-note/siyuan/issues/15163
                 setTimeout(() => {
                     window.location.reload();
@@ -75,7 +77,7 @@ export const fetchPost = ((
                     return response.text();
                 }
         }
-    }), signal, timeout).then((response: IWebSocketData) => {
+    }), signal, iosRecovery() && url === "/api/transactions" ? 0 : timeout).then((response: IWebSocketData) => {
         if (failCallback && url === "/api/file/getFile" && isGetFile202) {
             failCallback(response);
             return;
@@ -141,7 +143,7 @@ export const fetchSyncPost = (async (url: string, data?: any, headers?: Record<s
             init.body = JSON.stringify(data);
         }
     }
-    const res = await fetch(url, init);
+    const res = await (iosTransactionFetch(url, init) || fetch(url, init));
     const res2 = await res.json() as IWebSocketData;
     if (process) {
         processMessage(res2);

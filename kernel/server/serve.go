@@ -143,6 +143,7 @@ func Serve(fastMode bool, cookieKey string) {
 	}
 	gin.SetMode(gin.ReleaseMode)
 	ginServer := gin.New()
+	installMobileRequests(ginServer)
 	if err := ginServer.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		logging.LogFatalf(logging.ExitCodeSecurityRisk, "set trusted proxies failed: %s", err)
 	}
@@ -198,8 +199,11 @@ func Serve(fastMode bool, cookieKey string) {
 		host = "127.0.0.1"
 	}
 
-	ln, err := net.Listen("tcp", host+":"+util.ServerPort)
+	ln, err := listenKernel("tcp", host+":"+util.ServerPort)
 	if err != nil {
+		if mobileServingFailed("listener_setup_failed") {
+			return
+		}
 		if !fastMode {
 			logging.LogErrorf("boot kernel failed: %s", err)
 			os.Exit(logging.ExitCodeUnavailablePort)
@@ -209,8 +213,14 @@ func Serve(fastMode bool, cookieKey string) {
 		return
 	}
 
+	if MobileRecoveryEnabled() {
+		defer ln.Close()
+	}
 	_, port, err := net.SplitHostPort(ln.Addr().String())
 	if err != nil {
+		if mobileServingFailed("listener_setup_failed") {
+			return
+		}
 		if !fastMode {
 			logging.LogErrorf("boot kernel failed: %s", err)
 			os.Exit(logging.ExitCodeUnavailablePort)
@@ -224,6 +234,9 @@ func Serve(fastMode bool, cookieKey string) {
 	// Generate TLS certificates for local HTTPS + HTTP/2 support
 	certPath, keyPath, certErr := util.GetOrCreateTLSCert()
 	if certErr != nil {
+		if mobileServingFailed("tls_setup_failed") {
+			return
+		}
 		logging.LogWarnf("failed to get TLS certificates, local HTTPS/HTTP2 unavailable: %s", certErr)
 		certPath = ""
 	}
@@ -286,8 +299,12 @@ func Serve(fastMode bool, cookieKey string) {
 		Handler: httpHandler,
 	}
 
+	prepareMobileHTTP(util.HttpServer)
 	if "" != certPath {
 		if _, _, err = util.ServeMultiplexed(ln, httpHandler, certPath, keyPath, util.HttpServer, nil); err != nil {
+			if mobileServeReturned(err) {
+				return
+			}
 			// 退出时 model.Close() 调 util.HttpServer.Close() 会通过 cmux 派生 listener 关掉 root，
 			// m.Serve() 随后返回 *net.OpError("use of closed network connection")；
 			// net.ErrClosed 即该错误的哨兵，须一并视为正常退出，否则会被误判为致命错误并 os.Exit(21)
@@ -304,6 +321,9 @@ func Serve(fastMode bool, cookieKey string) {
 	}
 
 	if err = util.HttpServer.Serve(ln); err != nil {
+		if mobileServeReturned(err) {
+			return
+		}
 		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
 			return
 		}

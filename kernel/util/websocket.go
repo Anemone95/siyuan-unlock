@@ -158,6 +158,9 @@ func AddPushChan(session *melody.Session) {
 	}
 	session.Set("type", typ)
 
+	pushSessionsMu.Lock()
+	defer pushSessionsMu.Unlock()
+
 	if IsAuthSession(session) {
 		if appSessions, ok := authSessions.Load(appID); !ok {
 			appSess := &sync.Map{}
@@ -218,11 +221,14 @@ func RemovePushChan(session *melody.Session) {
 		return
 	}
 
+	pushSessionsMu.Lock()
+	defer pushSessionsMu.Unlock()
+
 	if IsAuthSession(session) {
 		appSess, _ := authSessions.Load(app)
 		if nil != appSess {
 			appSessions := appSess.(*sync.Map)
-			appSessions.Delete(id)
+			appSessions.CompareAndDelete(id, session)
 			if 1 > lenOfSyncMap(appSessions) {
 				authSessions.Delete(app)
 			}
@@ -231,7 +237,7 @@ func RemovePushChan(session *melody.Session) {
 		appSess, _ := sessions.Load(app)
 		if nil != appSess {
 			appSessions := appSess.(*sync.Map)
-			appSessions.Delete(id)
+			appSessions.CompareAndDelete(id, session)
 			if 1 > lenOfSyncMap(appSessions) {
 				sessions.Delete(app)
 			}
