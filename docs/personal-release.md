@@ -85,4 +85,6 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-check.yml` 在主分支推送和 PR 上执行 Python 发布工具测试、workflow 静态检查、真实解锁补丁与账户校验、Go race、前端协议和 lint，并复用完整 iOS 构建来产生可下载的测试 IPA。此 CI 使用只读仓库权限。
 
+手动运行该检查并勾选 `full_build`，还会构建桌面、自签名 Android 和三种架构的容器镜像。产物保存在 Actions artifacts，容器构建采用本地缓存输出，用于四平台发布前验证。
+
 本地核验包括：14 项发布工具回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 通过手动入口发布；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。

@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      full_build:
+        description: Build desktop, signed Android and container artifacts as well
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +45,7 @@ jobs:
       version: ${{ steps.inputs.outputs.version }}
       unlock_ref: ${{ steps.inputs.outputs.unlock_ref }}
       ios_ref: ${{ steps.inputs.outputs.ios_ref }}
+      android_ref: ${{ steps.inputs.outputs.android_ref }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,7 +62,7 @@ jobs:
           pins = json.loads((root / 'scripts/personal-build-inputs.json').read_text())
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('version=v' + version + '\n')
-              for name in ['unlock', 'ios']:
+              for name in ['unlock', 'ios', 'android']:
                   value = pins[name + '_commit']
                   if not re.fullmatch(r'[0-9a-f]{40}', value):
                       raise ValueError('Build inputs must be pinned to commit SHAs')
@@ -96,3 +102,31 @@ jobs:
       version: ${{ needs.recovery.outputs.version }}
       unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
       ios_ref: ${{ needs.recovery.outputs.ios_ref }}
+
+  desktop:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_build
+    needs: recovery
+    uses: ./.github/workflows/personal-desktop.yml
+    with:
+      version: ${{ needs.recovery.outputs.version }}
+      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
+
+  android:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_build
+    needs: recovery
+    uses: ./.github/workflows/personal-android.yml
+    with:
+      version: ${{ needs.recovery.outputs.version }}
+      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
+      android_ref: ${{ needs.recovery.outputs.android_ref }}
+    secrets: inherit
+
+  docker:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_build
+    needs: recovery
+    uses: ./.github/workflows/personal-docker.yml
+    with:
+      version: ${{ needs.recovery.outputs.version }}
+      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
+      release_tag: ci-${{ github.run_id }}
+      push_image: false
