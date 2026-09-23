@@ -28,7 +28,7 @@
 - [桌面与 iOS 实际构建](https://github.com/Anemone95/siyuan-unlock/actions/runs/35889730847)的六种桌面任务及 iOS 任务均通过；该次总任务还包含随后单独修复和复测的 Android、Docker 任务。
 - [Docker 实际构建](https://github.com/Anemone95/siyuan-unlock/actions/runs/35899392966)通过；amd64、arm64、arm/v7 二进制的目标架构和镜像内执行结果均通过校验。
 - [最新源码 CI](https://github.com/Anemone95/siyuan-unlock/actions/runs/35899362684)全部通过，覆盖 Linux、Windows 发布工具、恢复回归、前端检查和完整 iOS 构建。公开 Release 由独立手动入口执行。
-- [完整发布工作流](https://github.com/Anemone95/siyuan-unlock/actions/runs/35900081153)成功完成，已公开 [v3.8.5-unlock.1](https://github.com/Anemone95/siyuan-unlock/releases/tag/v3.8.5-unlock.1)，标签对应 `103502621eeb25effd85147551e822a68e277158`。20 个资产包含 11 个安装包与 9 份构建来源记录。GHCR 的版本标签与 `latest` 指向相同摘要，三架构 manifest 已通过匿名访问核验。
+- [完整发布工作流](https://github.com/Anemone95/siyuan-unlock/actions/runs/35900081153)成功完成，已公开 [v3.8.5-unlock.1](https://github.com/Anemone95/siyuan-unlock/releases/tag/v3.8.5-unlock.1)，标签对应 `103502621eeb25effd85147551e822a68e277158`。Release 保留 11 个安装包，9 份构建来源记录保存在 Actions artifacts 中。GHCR 的版本标签与 `latest` 指向相同摘要，三架构 manifest 已通过匿名访问核验。
 
 ## 待完成的产品验证
 

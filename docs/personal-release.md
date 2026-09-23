@@ -52,9 +52,9 @@ GitHub Actions 的入口为 `Release our SiYuan source`，定义在 `.github/wor
 
 人工补充草稿说明时，使用 `gh release edit <release_tag> --notes-file <file>`，并保留正文中的 `siyuan-build-inputs` 来源标记。GitHub CLI 会在更新请求中保留标签；通过 REST API 更新草稿时同时传递准确的 `tag_name`，并回读核对标签与源码提交。
 
-桌面、Android、iOS 工作流将产物上传为 Actions artifacts；Docker 构建独立的版本标签。最终任务在所有平台成功后核对来源记录、壳提交和签名指纹，汇总文件到 Release，再提升容器 `latest` 并发布草稿。失败构建保留草稿，GitHub 的重新运行失败任务可继续同一次发布。
+桌面、Android、iOS 工作流将产物上传为 Actions artifacts；Docker 构建独立的版本标签。最终任务在所有平台成功后核对来源记录、壳提交和签名指纹，汇总安装包到 Release，再提升容器 `latest` 并发布草稿。Release 正文使用英文，附件保留应用安装包；JSON 来源记录保存在 Actions artifacts 中。失败构建保留草稿，GitHub 的重新运行失败任务可继续同一次发布。
 
-每个平台先检出当前个人仓库的 `github.sha`，再通过共同的 composite action 检出固定补丁提交。`scripts/prepare-personal-build.py` 在独立构建目录复制源码，校验前端与内核版本一致，依次执行五个补丁的 `git apply --check` 和 `git apply`。补丁直接从 Git 对象读取，保证 Windows 换行转换下的哈希一致。它记录源码提交、补丁提交、各补丁哈希、版本和包管理器版本；移动端工作流追加壳提交和 Android 签名指纹。发布资产包含这些来源记录。
+每个平台先检出当前个人仓库的 `github.sha`，再通过共同的 composite action 检出固定补丁提交。`scripts/prepare-personal-build.py` 在独立构建目录复制源码，校验前端与内核版本一致，依次执行五个补丁的 `git apply --check` 和 `git apply`。补丁直接从 Git 对象读取，保证 Windows 换行转换下的哈希一致。它记录源码提交、补丁提交、各补丁哈希、版本和包管理器版本；移动端工作流追加壳提交和 Android 签名指纹。这些来源记录由最终发布任务校验，并保留为 Actions artifacts。
 
 本地可以在保留未提交源码修改的情况下验证相同准备步骤：
 

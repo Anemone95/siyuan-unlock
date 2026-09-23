@@ -112,7 +112,7 @@ jobs:
         with:
           pattern: assets-*
           path: release-assets
-      - name: Attach exact build inputs
+      - name: Verify exact build inputs
         run: |
           python - <<'PYCODE'
           import json, os
@@ -129,9 +129,7 @@ jobs:
                   raise ValueError('iOS source mismatch')
               if path.parent.name == 'inputs-android' and (data['android_commit'] != os.environ['ANDROID_REF'].lower() or data['android_signer_sha256'] != os.environ['ANDROID_SIGNING_SHA256'].lower()):
                   raise ValueError('Android source or signer mismatch')
-              path.rename(Path('build-inputs') / (path.parent.name + '.json'))
           PYCODE
-          gh release upload "$RELEASE_TAG" build-inputs/*.json --clobber
       - name: Upload verified build assets
         run: |
           python - <<'PYCODE'
