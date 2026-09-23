@@ -14,15 +14,21 @@
 | 本地目录被替换为文件时，构建快照仍保留旧目录结构 | 先处理已删除路径，再复制当前源码；回归覆盖替换、未提交编辑和原目录保持 |
 | Windows 的换行转换影响补丁字节；goversioninfo 安装会改动依赖文件 | 从 Git 对象读取规范补丁原文；显式配置 GCC，以固定版本安装 goversioninfo |
 | macOS 15 runner 默认 Xcode 为 16.4，低于当前 iOS 源码所需 SDK | iOS 固定使用已验证的 macOS 15 / Xcode 26.2；CI 执行完整 unsigned IPA 构建并检查分享扩展 |
+| Android SDK action 的默认组件包含已撤下的 `tools`，导致安装退出 | 显式安装 `platform-tools`，再指定 SDK、Build Tools 与 NDK；实际 Android 构建通过 |
+| Android 产物检查依赖固定文件名与 shell 文本匹配，失败信息不足 | 从 Gradle 元数据定位两种 APK，分别校验真实包名、版本和签名；错误证书与错误包名回归通过 |
 | Docker 架构列表包含基础镜像未提供的 `linux/arm/v8` | 核对实际 manifest 后保留 amd64、arm64 和 arm/v7；镜像推送到当前账号 GHCR |
+| ARM 容器在 QEMU 中编译 Go，超过一小时仍未完成 | 使用固定摘要的 xx 工具在构建机上交叉编译；三架构构建及最终镜像的 `kernel --version` 均通过，镜像构建约 9 分 22 秒 |
 
 ## 验证范围
 
 - 发布工具 17 项回归覆盖来源一致性、草稿分页与复用、错误版本、被修改补丁、目录替换和 Windows 换行。
 - Go race 覆盖独立 listener、实际 util/server 接入及 session 身份删除；前端 12 项测试和 lint 通过。
 - Swift 状态测试和 iPhoneOS SDK typecheck 通过，包含冷启动续接、页面重新挂接、场景集合和过期 ACK。
-- 固定 Android 源码通过两个真实补丁的适用性检查；固定自签名密钥已配置，APK 构建时核验签名指纹。
-- `personal-check.yml` 在推送后继续验证 Linux、Windows 发布工具和完整 iOS 构建。公开 Release 由独立手动入口执行。
+- [Android 实际构建](https://github.com/Anemone95/siyuan-unlock/actions/runs/35895088786)通过；两个 APK 的包名、3.8.5 版本和固定自签名证书均已核验，产物与源码记录可从该次 Actions 下载。
+- [桌面与 iOS 实际构建](https://github.com/Anemone95/siyuan-unlock/actions/runs/35889730847)的六种桌面任务及 iOS 任务均通过；该次总任务还包含随后单独修复和复测的 Android、Docker 任务。
+- [Docker 实际构建](https://github.com/Anemone95/siyuan-unlock/actions/runs/35899392966)通过；amd64、arm64、arm/v7 二进制的目标架构和镜像内执行结果均通过校验。
+- [最新源码 CI](https://github.com/Anemone95/siyuan-unlock/actions/runs/35899362684)全部通过，覆盖 Linux、Windows 发布工具、恢复回归、前端检查和完整 iOS 构建。公开 Release 由独立手动入口执行。
+- [完整发布工作流](https://github.com/Anemone95/siyuan-unlock/actions/runs/35900081153)成功完成，已公开 [v3.8.5-unlock.1](https://github.com/Anemone95/siyuan-unlock/releases/tag/v3.8.5-unlock.1)，标签对应 `103502621eeb25effd85147551e822a68e277158`。20 个资产包含 11 个安装包与 9 份构建来源记录。GHCR 的版本标签与 `latest` 指向相同摘要，三架构 manifest 已通过匿名访问核验。
 
 ## 待完成的产品验证
 

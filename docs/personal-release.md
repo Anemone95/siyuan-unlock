@@ -50,6 +50,8 @@ GitHub Actions 的入口为 `Release our SiYuan source`，定义在 `.github/wor
 
 入口校验版本、提交格式和 Android 签名配置，创建与当前源码提交关联的草稿 Release。草稿中记录所有源码提交及 Android 证书指纹，相同输入可复用草稿；现有标签指向其他提交、草稿来源不一致或已经发布时，构建会明确报错。同标签的发布工作流串行执行。
 
+人工补充草稿说明时，使用 `gh release edit <release_tag> --notes-file <file>`，并保留正文中的 `siyuan-build-inputs` 来源标记。GitHub CLI 会在更新请求中保留标签；通过 REST API 更新草稿时同时传递准确的 `tag_name`，并回读核对标签与源码提交。
+
 桌面、Android、iOS 工作流将产物上传为 Actions artifacts；Docker 构建独立的版本标签。最终任务在所有平台成功后核对来源记录、壳提交和签名指纹，汇总文件到 Release，再提升容器 `latest` 并发布草稿。失败构建保留草稿，GitHub 的重新运行失败任务可继续同一次发布。
 
 每个平台先检出当前个人仓库的 `github.sha`，再通过共同的 composite action 检出固定补丁提交。`scripts/prepare-personal-build.py` 在独立构建目录复制源码，校验前端与内核版本一致，依次执行五个补丁的 `git apply --check` 和 `git apply`。补丁直接从 Git 对象读取，保证 Windows 换行转换下的哈希一致。它记录源码提交、补丁提交、各补丁哈希、版本和包管理器版本；移动端工作流追加壳提交和 Android 签名指纹。发布资产包含这些来源记录。
