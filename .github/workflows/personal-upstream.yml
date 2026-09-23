@@ -1,0 +1,47 @@
+name: Sync official release and publish
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: Report the next release without merging or publishing
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: personal-upstream-release
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'Anemone95/siyuan-unlock'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          ssh-key: ${{ secrets.UPSTREAM_SYNC_SSH_KEY }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release automation
+        run: python -m unittest discover -s scripts -p "test_personal_*.py"
+      - name: Merge the official release tag and dispatch our release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_ONLY: ${{ inputs.check_only || false }}
+          SYNC_KEY_PRESENT: ${{ secrets.UPSTREAM_SYNC_SSH_KEY != '' }}
+        run: |
+          test "$SYNC_KEY_PRESENT" = "true"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          args=()
+          if [ "$CHECK_ONLY" = "true" ]; then args+=(--check-only); fi
+          python scripts/personal-upstream.py "${args[@]}"

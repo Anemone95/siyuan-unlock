@@ -10,23 +10,37 @@
 
 两个本地仓库均有独立 Git 对象库。`origin` 指向个人 fork，`upstream` 指向对应官方源码；主仓库另有 `unlock` remote 指向补丁提供方。个人恢复功能直接维护在源码及新增模块中，`git diff` 展示实际改动。
 
-## 同步顺序
+## 自动跟随正式版本
 
-在当前修改完成评审并保存为提交后，主仓库执行：
+`Sync official release and publish` 工作流定义在 `.github/workflows/personal-upstream.yml`，每小时第 17 分钟检查官方最新正式 Release，也支持手动启动和 `check_only` 预览。
+
+1. 读取官方 Release 的 `tag_name`，解析 tag 的真实提交，包括 annotated tag。
+2. 在干净检出中将该 tag 合并到个人 `master`，保留个人修改，并核对合并后的源码版本。
+3. 将 Android 壳固定到同版本 tag 的提交；iOS 壳与解锁补丁沿用配置文件中的已审核提交。
+4. 在独立目录检查并应用固定解锁补丁，验证前端与内核版本一致。
+5. 原子推送 `master` 和个人发布标签 `vX.Y.Z-unlock.1`，以普通快进检查保护远端并发修改。
+6. 以个人发布标签作为 `workflow_dispatch` 的 ref，启动四平台构建。所有平台校验通过后公开 Release。
+
+已有个人 Release、草稿或发布标签的版本会跳过。合并冲突、移动端 tag 缺失、补丁不兼容或并发推送冲突均报告失败；维护者处理后可重新执行同步。已有发布任务使用 GitHub 的重新运行失败任务继续；若已推送标签但 dispatch 未成功，可针对该标签手动启动：
 
 ```sh
-git fetch upstream
-git merge upstream/master
+gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f release_tag=vX.Y.Z-unlock.1
 ```
 
-iOS 仓库执行：
+自动 Git 推送使用仅授权本仓库的写入 deploy key，私钥保存在 `UPSTREAM_SYNC_SSH_KEY` Actions secret 中。工作流调度使用 `GITHUB_TOKEN` 的 `actions: write` 权限。[GitHub 工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+
+2026-09-23 核验时，官方 `v3.8.5` tag 与个人源码基线均为 `60a4387cc1ce0cd0c7a61c2343e5a6a020758c0a`；该基线后的提交均为个人恢复功能和发布流程修改。
+
+## 手动同步与固定依赖
+
+手动同步也使用目标正式版本的 tag。当前修改完成评审并保存为提交后，以 `v3.8.5` 为例执行，升级时替换为实际 Release tag：
 
 ```sh
-git fetch upstream
-git merge upstream/main
+git fetch upstream tag v3.8.5
+git merge --no-ff v3.8.5
 ```
 
-已发布的主分支采用 merge 保留历史。个人尚未发布的开发分支可用 rebase 整理提交。同步后运行恢复、session、前端和绑定测试，再由维护者发布自己的源码提交。
+已发布的主分支采用 merge 保留历史。iOS 壳独立审查并同步所需上游提交，随后更新主仓库中的固定 SHA。同步后运行恢复、session、前端和绑定测试。
 
 补丁提供方单独更新：
 
@@ -93,4 +107,4 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-android.yml` 和 `personal-docker.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，分别验证 Android 工具链与签名、三种架构的容器构建。Docker 独立入口仅执行构建验证。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
 
-本地核验包括：17 项发布工具回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 通过手动入口发布；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
+本地核验包括：27 项发布与上游同步回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败和并发推送保护。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
