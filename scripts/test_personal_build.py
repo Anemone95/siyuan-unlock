@@ -35,7 +35,7 @@ class BuildSnapshotTest(unittest.TestCase):
         for index, name in enumerate(BUILD.PATCHES):
             file = self.patches / "patches/siyuan" / name
             file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text(f"diff --git a/unlock-{index} b/unlock-{index}\nnew file mode 100644\n--- /dev/null\n+++ b/unlock-{index}\n@@ -0,0 +1 @@\n+enabled\n")
+            file.write_text(f"diff --git a/unlock-{index} b/unlock-{index}\nnew file mode 100644\n--- /dev/null\n+++ b/unlock-{index}\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
         self.commit(self.patches)
 
     def git(self, repo, *args):
