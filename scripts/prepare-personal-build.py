@@ -56,10 +56,10 @@ def prepare(source, patches, destination, version):
     for name in PATCHES:
         path = "patches/siyuan/" + name
         override = patch_override(source, version, name)
+        override_ref = override.relative_to(source).as_posix()
+        if is_dirty_path(source, override_ref):
+            raise ValueError(f"Patch override has uncommitted modifications: {override_ref}")
         if override.is_file():
-            override_ref = override.relative_to(source).as_posix()
-            if is_dirty_path(source, override_ref):
-                raise ValueError(f"Patch override has uncommitted modifications: {override_ref}")
             data = git(source, "show", f"{source_commit}:{override_ref}")
             selected.append({"path": path, "override": override_ref, "sha256": hashlib.sha256(data).hexdigest()})
             contents.append(data)

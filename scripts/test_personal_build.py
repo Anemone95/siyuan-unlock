@@ -134,6 +134,25 @@ class BuildSnapshotTest(unittest.TestCase):
         selected = [item for item in record["patches"] if item["path"] == "patches/siyuan/default-config.patch"][0]
         self.assertEqual(selected["override"], "scripts/patches/v3.8.5/default-config.patch")
 
+    def test_override_rejects_uncommitted_deletion(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_bytes((self.patches / "patches/siyuan/default-config.patch").read_bytes())
+        self.commit(self.source)
+        override.unlink()
+        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
+            self.prepare()
+        self.assertFalse(override.exists())
+        self.assertFalse((self.base / "build").exists())
+
+    def test_override_rejects_untracked_input(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_text("uncommitted patch", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
+            self.prepare()
+        self.assertEqual(override.read_text(), "uncommitted patch")
+
 
 if __name__ == "__main__":
     unittest.main()
