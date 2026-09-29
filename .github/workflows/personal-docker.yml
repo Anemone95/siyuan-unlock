@@ -77,11 +77,23 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           output_args=()
-          if [ "$PUSH_IMAGE" = "true" ]; then output_args+=(--push); fi
+          if [ "$PUSH_IMAGE" = "true" ]; then
+            output_args+=(--push)
+          else
+            output_args+=(--output "type=oci,dest=$RUNNER_TEMP/siyuan-image.tar")
+          fi
           docker buildx build "${output_args[@]}" --platform linux/amd64,linux/arm64,linux/arm/v7 --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$image:$RELEASE_TAG" .
         env:
           RELEASE_TAG: ${{ inputs.release_tag || format('ci-{0}', github.run_id) }}
           PUSH_IMAGE: ${{ inputs.push_image || false }}
+      - name: Save container preview
+        if: ${{ !inputs.push_image }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-docker
+          path: ${{ runner.temp }}/siyuan-image.tar
+          if-no-files-found: error
+          compression-level: 0
       - name: Save build inputs
         uses: actions/upload-artifact@v4
         with:

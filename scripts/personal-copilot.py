@@ -10,6 +10,7 @@ import tempfile
 
 REPOSITORY = "Anemone95/siyuan-unlock"
 COPILOT = "copilot-swe-agent[bot]"
+CONTEXT_MARKER = "<!-- siyuan-repair-context: "
 
 
 def request(path, payload=None, token=None):
@@ -22,7 +23,8 @@ def request(path, payload=None, token=None):
             file = Path(folder) / "request.json"
             file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             command += ["--method", "POST", "--input", str(file)]
-        return json.loads(subprocess.check_output(command, env=env, text=True))
+        output = subprocess.check_output(command, env=env, text=True)
+        return json.loads(output) if output.strip() else None
 
 
 def conflict_marker(context):
@@ -33,6 +35,7 @@ def conflict_marker(context):
 
 def issue_body(context):
     marker = conflict_marker(context)
+    record = {key: context[key] for key in ("version", "upstream_commit", "base_commit", "android_commit", "unlock_commit", "kind") if key in context}
     problem = f"与上游 {context['version']} 的合并存在冲突。"
     patch_guidance = "沿用当前固定 iOS 壳和解锁补丁提交。"
     if context.get("kind") == "patch":
@@ -59,7 +62,7 @@ def issue_body(context):
 
 {patch_guidance}
 
-完成后运行发布工具回归、适用的 Go race 测试、前端恢复测试及 lint，并在 PR 中说明解决方式和实际测试结果。PR 合并由维护者确认，发布由现有同步工作流接续。
+修复与验证期间保持草稿 PR。完成代码后，自动验收控制器会固定最新提交运行四平台 CI/CD；失败日志会反馈到本 PR，请持续修复并提交新的候选。控制器核验该提交的检查、构建来源与全部产物后，才会转为待审核并请求维护者 review。若日志证实是临时外部故障且同一提交可复验，在 PR 评论中按反馈提供的标记请求重测。合并与正式发布仍由维护者确认后接续。
 
 验证入口：
 
@@ -69,7 +72,16 @@ python -m unittest discover -s scripts -p 'test_personal_*.py'
 
 Go 测试在 kernel 目录执行 `go test -race -timeout 120s ./server/mobiletransport` 和 `go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'`。前端在 app 目录执行 `node --test tests/ios*.test.mjs` 和 `pnpm run lint`。
 
+提交验收清单：
+
+1. 在修复 PR 分支真实合并目标 tag，执行 `git merge-base --is-ancestor {context['upstream_commit']} HEAD` 并确认成功。核对 `app/package.json` 与 `kernel/util/working.go` 的版本均为 `{context['version'].removeprefix('v')}`。
+2. 若涉及本地版本化补丁覆盖，确保 `{context['version']}` 与 `{context['version'].removeprefix('v')}` 选择同一补丁；明确拒绝补丁的未提交修改、删除及未跟踪文件，并为这些情况补充回归。应用已提交 Git 对象中的规范字节，记录实际应用补丁的 SHA-256，保留 Windows 换行一致性。
+3. 使用已提交且干净的候选 HEAD 生成独立构建目录，确认五个补丁依次检查并应用成功，再在应用补丁后的源码中执行受影响 API、账户同步及恢复回归。记录验证时的 HEAD，以及构建记录中的 `source_commit`、`source_edits`，使测试对象与 PR 最新提交一致。
+4. 若代理采用 partial clone、缺少 SDK 或工具，先在独立完整检出中验证同一 HEAD；保留原测试断言，将仍无法运行的检查明确列为环境限制，交由正常 CI 复验。
+5. PR 描述列出实际命令、通过项、失败项及未验证项。失败和未运行的检查保留准确状态；每次修改后补齐对应回归。提交保留在修复 PR 分支，由维护者确认合并后接续发布。
+
 {marker}
+{CONTEXT_MARKER}{json.dumps(record, sort_keys=True)} -->
 """
 
 
@@ -116,7 +128,7 @@ def delegate(context, token):
         request(f"repos/{REPOSITORY}/issues/{issue['number']}/assignees", {
             "assignees": [COPILOT],
             "agent_assignment": {"target_repo": REPOSITORY, "base_branch": "master",
-                                 "custom_instructions": "Resolve the exact upstream tag integration failure described in the issue, preserve the merge ancestry, and open a pull request for maintainer review."},
+                                 "custom_instructions": "Resolve the exact upstream tag integration failure described in the issue and preserve the merge ancestry. Keep the PR in draft while addressing automated CI feedback. The artifact validation controller requests maintainer review only after all four platforms pass for the current commit."},
         }, token)
         issue = request(f"repos/{REPOSITORY}/issues/{issue['number']}")
         if not any(assignee["login"].lower() in {"copilot", "copilot-swe-agent", COPILOT} for assignee in issue["assignees"]):

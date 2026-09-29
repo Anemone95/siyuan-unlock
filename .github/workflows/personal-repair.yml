@@ -1,0 +1,68 @@
+name: Validate Copilot repair artifacts
+
+on:
+  workflow_run:
+    workflows: [Copilot cloud agent, Check personal SiYuan changes]
+    types: [requested, completed]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Managed Copilot repair PR to reconcile
+        required: true
+        type: number
+
+permissions: {}
+
+jobs:
+  resolve:
+    if: github.repository == 'Anemone95/siyuan-unlock' && (github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, '<!-- siyuan-repair-retest:')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/personal-repair.py resolve
+
+  reconcile:
+    needs: resolve
+    if: needs.resolve.outputs.pr_number != ''
+    runs-on: ubuntu-latest
+    concurrency:
+      group: personal-repair-${{ needs.resolve.outputs.pr_number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Advance the repair and artifact validation cycle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_AGENT_TOKEN: ${{ secrets.COPILOT_AGENT_TOKEN }}
+          ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+          REPAIR_PR: ${{ needs.resolve.outputs.pr_number }}
+        run: python scripts/personal-repair.py reconcile --pr "$REPAIR_PR"
