@@ -87,6 +87,17 @@ class CopilotConflictTest(unittest.TestCase):
         self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker(self.context))
         self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker({**context, "unlock_commit": "e" * 40}))
 
+    def test_initial_tasks_include_the_integration_acceptance_checks(self):
+        contexts = [self.context, {**self.context, "kind": "patch", "unlock_commit": "d" * 40, "details": "patch does not apply"}]
+        for context in contexts:
+            with self.subTest(kind=context.get("kind", "merge")):
+                body = COPILOT.issue_body(context)
+                for requirement in ["git merge-base --is-ancestor " + context["upstream_commit"] + " HEAD",
+                                    "app/package.json", "kernel/util/working.go", "`v3.8.6` 与 `3.8.6`",
+                                    "未提交修改、删除及未跟踪文件", "应用补丁后的源码", "source_commit", "source_edits",
+                                    "partial clone", "通过项、失败项及未验证项", "由维护者确认合并"]:
+                    self.assertIn(requirement, body)
+
 
 if __name__ == "__main__":
     unittest.main()

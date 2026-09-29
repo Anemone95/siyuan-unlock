@@ -69,6 +69,14 @@ python -m unittest discover -s scripts -p 'test_personal_*.py'
 
 Go 测试在 kernel 目录执行 `go test -race -timeout 120s ./server/mobiletransport` 和 `go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'`。前端在 app 目录执行 `node --test tests/ios*.test.mjs` 和 `pnpm run lint`。
 
+提交验收清单：
+
+1. 在修复 PR 分支真实合并目标 tag，执行 `git merge-base --is-ancestor {context['upstream_commit']} HEAD` 并确认成功。核对 `app/package.json` 与 `kernel/util/working.go` 的版本均为 `{context['version'].removeprefix('v')}`。
+2. 若涉及本地版本化补丁覆盖，确保 `{context['version']}` 与 `{context['version'].removeprefix('v')}` 选择同一补丁；明确拒绝补丁的未提交修改、删除及未跟踪文件，并为这些情况补充回归。应用已提交 Git 对象中的规范字节，记录实际应用补丁的 SHA-256，保留 Windows 换行一致性。
+3. 使用已提交且干净的候选 HEAD 生成独立构建目录，确认五个补丁依次检查并应用成功，再在应用补丁后的源码中执行受影响 API、账户同步及恢复回归。记录验证时的 HEAD，以及构建记录中的 `source_commit`、`source_edits`，使测试对象与 PR 最新提交一致。
+4. 若代理采用 partial clone、缺少 SDK 或工具，先在独立完整检出中验证同一 HEAD；保留原测试断言，将仍无法运行的检查明确列为环境限制，交由正常 CI 复验。
+5. PR 描述列出实际命令、通过项、失败项及未验证项。失败和未运行的检查保留准确状态；每次修改后补齐对应回归。提交保留在修复 PR 分支，由维护者确认合并后接续发布。
+
 {marker}
 """
 

@@ -35,6 +35,8 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 
 `scripts/personal-copilot.py` 使用 GitHub 原生 Copilot cloud agent。同步检测到未合并文件或 `git apply --check` 失败后，会把版本、准确 tag 提交、远端可访问的个人基线和冲突文件写入 Issue，分配给 Copilot，并要求生成供维护者审核的修复 PR。补丁任务额外记录固定补丁提交及 Git 原始诊断；Copilot 可以审查新的兼容补丁提交，或在本仓库提出可审查的兼容改动。合并任务按上游提交去重，补丁任务按上游与补丁提交组合去重；已关闭任务保留记录，由维护者从既有代理任务或 PR 继续处理。修复过程保留事件驱动恢复、编辑状态与 session 身份语义。
 
+每次初始任务包含统一验收清单：准确 tag 的祖先关系、前端与内核版本一致、脏补丁处理、版本前缀规范化、已提交构建输入、应用补丁后的测试，以及实际通过、失败和未验证项。代理环境限制需在正常检出和 CI 中复验；生成任务正文的回归测试覆盖这些要求。
+
 仓库的 Issues 已启用，Copilot 已出现在可分配代理列表。自动分配需要仓库 secret `COPILOT_AGENT_TOKEN`，保存仅选择本仓库的 fine-grained 用户令牌，授予 Metadata 读取权限，以及 Actions、Contents、Issues、Pull requests 读写权限。该用户需要拥有可用的 Copilot cloud agent 订阅及仓库访问权。[GitHub Copilot API 的认证要求](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-via-the-api)
 
 配置后，手动运行同步工作流并选中 `check_only`，会核验该令牌对应的 Copilot 账户和仓库访问。Copilot PR 的 CI 按 GitHub 设置执行，默认情况下维护者在 PR 中批准工作流运行；检查和人工评审完成后合并，下一次同步检查接续四平台发布。[GitHub Copilot 的 PR 工作流规则](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-on-github#managing-github-actions-workflow-runs)
@@ -115,4 +117,4 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-android.yml` 和 `personal-docker.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，分别验证 Android 工具链与签名、三种架构的容器构建。Docker 独立入口仅执行构建验证。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
 
-本地核验包括：40 项发布、上游同步与 Copilot 分配回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖实际冲突上下文、任务去重、外部 Issue 隔离、缺失令牌和分配失败。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
+本地核验包括：41 项发布、上游同步与 Copilot 分配回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖实际冲突上下文、任务去重、外部 Issue 隔离、缺失令牌、分配失败和初始验收清单。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
