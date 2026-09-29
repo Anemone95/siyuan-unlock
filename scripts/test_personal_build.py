@@ -81,6 +81,16 @@ class BuildSnapshotTest(unittest.TestCase):
             self.prepare()
         self.assertFalse((self.base / "build").exists())
 
+    def test_reports_the_exact_incompatible_patch_and_git_diagnostic(self):
+        file = self.patches / "patches/siyuan/default-config.patch"
+        file.write_text("diff --git a/module/old.txt b/module/old.txt\n--- a/module/old.txt\n+++ b/module/old.txt\n@@ -1 +1 @@\n-incompatible context\n+after\n", encoding="utf-8", newline="\n")
+        self.commit(self.patches)
+        with self.assertRaises(BUILD.PatchApplicationError) as failure:
+            self.prepare()
+        self.assertEqual(failure.exception.patch, "patches/siyuan/default-config.patch")
+        self.assertIn("module/old.txt", failure.exception.detail)
+        self.assertEqual((self.source / "module/old.txt").read_text(), "before\n")
+
     def test_rejects_mixed_kernel_and_frontend_versions(self):
         (self.source / "kernel/util/working.go").write_text('package util\nconst Ver = "3.6.5"\n')
         with self.assertRaises(ValueError):

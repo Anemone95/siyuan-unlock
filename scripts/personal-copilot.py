@@ -25,10 +25,29 @@ def request(path, payload=None, token=None):
         return json.loads(subprocess.check_output(command, env=env, text=True))
 
 
+def conflict_marker(context):
+    if context.get("kind") == "patch":
+        return f"<!-- upstream-patch-conflict: {context['upstream_commit']} {context['unlock_commit']} -->"
+    return f"<!-- upstream-merge-conflict: {context['upstream_commit']} -->"
+
+
 def issue_body(context):
-    marker = f"<!-- upstream-merge-conflict: {context['upstream_commit']} -->"
+    marker = conflict_marker(context)
+    problem = f"与上游 {context['version']} 的合并存在冲突。"
+    patch_guidance = "沿用当前固定 iOS 壳和解锁补丁提交。"
+    if context.get("kind") == "patch":
+        problem = f"解锁补丁与上游 {context['version']} 不兼容。"
+        patch_guidance = f"""当前解锁补丁来自 appdev/siyuan-unlock@`{context['unlock_commit']}`，适用性检查报告：
+
+```text
+{context['details'].strip()}
+```
+
+先检查补丁提供方是否已有兼容提交，经验证后更新 `scripts/personal-build-inputs.json` 中的固定 SHA。若补丁源尚未适配，在本仓库维护最小、可审查的兼容补丁，并同步构建准备逻辑和回归测试。保持五个解锁补丁的完整功能，以及上游源码与独立构建目录的边界。沿用当前固定 iOS 壳提交。
+
+复现时检出固定补丁源，再执行 `python scripts/prepare-personal-build.py --source . --patch-repo <补丁检出目录> --destination <新临时目录>/siyuan --version {context['version']}`，确认全部补丁依次通过检查和应用。"""
     paths = "\n".join("- " + json.dumps(path, ensure_ascii=False) for path in context["files"])
-    return f"""与上游 {context['version']} 的合并存在冲突。
+    return f"""{problem}
 
 请从本仓库最新 master 创建修复 PR，合并官方 siyuan-note/siyuan 的 {context['version']} tag，并保留真正的 Git merge 历史。该 tag 已解析为 `{context['upstream_commit']}`；复现时个人分支为 `{context['base_commit']}`。
 
@@ -36,7 +55,9 @@ def issue_body(context):
 
 {paths}
 
-将修改限定为本次合并所需内容，保留个人恢复模块及其 hook。iOS 恢复继续仅由事件回调驱动，保留编辑状态、未确认事务和 WebSocket session 身份校验。沿用当前固定 iOS 壳和解锁补丁提交；Android 壳对应版本的提交为 `{context['android_commit']}`。
+将修改限定为本次适配所需内容，保留个人恢复模块及其 hook。iOS 恢复继续仅由事件回调驱动，保留编辑状态、未确认事务和 WebSocket session 身份校验。Android 壳对应版本的提交为 `{context['android_commit']}`。
+
+{patch_guidance}
 
 完成后运行发布工具回归、适用的 Go race 测试、前端恢复测试及 lint，并在 PR 中说明解决方式和实际测试结果。PR 合并由维护者确认，发布由现有同步工作流接续。
 
@@ -69,7 +90,7 @@ def check_access(token):
 def delegate(context, token):
     if not token:
         raise ValueError("Set COPILOT_AGENT_TOKEN to a repository-scoped user token to assign merge conflicts to Copilot")
-    marker = f"<!-- upstream-merge-conflict: {context['upstream_commit']} -->"
+    marker = conflict_marker(context)
     issue = None
     page = 1
     while True:
@@ -83,7 +104,8 @@ def delegate(context, token):
             break
         page += 1
     if issue is None:
-        payload = {"title": f"Merge conflicts with upstream {context['version']}", "body": issue_body(context)}
+        title = "Unlock patch incompatibility" if context.get("kind") == "patch" else "Merge conflicts"
+        payload = {"title": f"{title} with upstream {context['version']}", "body": issue_body(context)}
         created = request(f"repos/{REPOSITORY}/issues", payload)
         issue = request(f"repos/{REPOSITORY}/issues/{created['number']}")
         if issue["title"] != payload["title"] or issue["body"] != payload["body"]:
@@ -94,7 +116,7 @@ def delegate(context, token):
         request(f"repos/{REPOSITORY}/issues/{issue['number']}/assignees", {
             "assignees": [COPILOT],
             "agent_assignment": {"target_repo": REPOSITORY, "base_branch": "master",
-                                 "custom_instructions": "Resolve the pinned upstream tag merge described in the issue and open a pull request for maintainer review."},
+                                 "custom_instructions": "Resolve the exact upstream tag integration failure described in the issue, preserve the merge ancestry, and open a pull request for maintainer review."},
         }, token)
         issue = request(f"repos/{REPOSITORY}/issues/{issue['number']}")
         if not any(assignee["login"].lower() in {"copilot", "copilot-swe-agent", COPILOT} for assignee in issue["assignees"]):

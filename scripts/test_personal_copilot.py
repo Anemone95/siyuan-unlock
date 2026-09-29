@@ -76,6 +76,17 @@ class CopilotConflictTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Resource not accessible"):
                 COPILOT.check_access("user-token-fixture")
 
+    def test_patch_failure_has_separate_identity_and_actionable_instructions(self):
+        context = {**self.context, "kind": "patch", "unlock_commit": "d" * 40,
+                   "files": ["patches/siyuan/default-config.patch"], "details": "error: kernel/api/setting.go: patch does not apply"}
+        body = COPILOT.issue_body(context)
+        self.assertIn("upstream-patch-conflict:", body)
+        self.assertIn(context["unlock_commit"], body)
+        self.assertIn("kernel/api/setting.go", body)
+        self.assertIn("scripts/personal-build-inputs.json", body)
+        self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker(self.context))
+        self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker({**context, "unlock_commit": "e" * 40}))
+
 
 if __name__ == "__main__":
     unittest.main()

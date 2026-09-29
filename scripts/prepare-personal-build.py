@@ -12,8 +12,15 @@ PATCHES = ["disable-update.patch", "default-config.patch", "mock-vip-user.patch"
            "hide-account-entry.patch", "first-launch-notice.patch"]
 
 
-def git(repo, *args, input=None):
-    return subprocess.check_output(["git", "-C", str(repo), *args], input=input)
+class PatchApplicationError(RuntimeError):
+    def __init__(self, patch, detail):
+        super().__init__(f"{patch}: {detail}")
+        self.patch = patch
+        self.detail = detail
+
+
+def git(repo, *args, input=None, stderr=None):
+    return subprocess.check_output(["git", "-C", str(repo), *args], input=input, stderr=stderr)
 
 
 def prepare(source, patches, destination, version):
@@ -62,8 +69,11 @@ def prepare(source, patches, destination, version):
         else:
             copied.unlink(missing_ok=True)
             edits[relative] = None
-    for data in contents:
-        git(destination, "apply", "--check", "-", input=data)
+    for selected_patch, data in zip(selected, contents):
+        try:
+            git(destination, "apply", "--check", "-", input=data, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as error:
+            raise PatchApplicationError(selected_patch["path"], error.stderr.decode("utf-8", errors="replace")) from error
         git(destination, "apply", "-", input=data)
     record = {"source_commit": source_commit, "source_edits": edits,
               "unlock_repository": "appdev/siyuan-unlock", "unlock_commit": patch_commit,

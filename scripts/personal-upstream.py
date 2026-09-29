@@ -5,12 +5,15 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
 
 UPSTREAM = "siyuan-note/siyuan"
 REPOSITORY = "Anemone95/siyuan-unlock"
+BUILD = runpy.run_path(str(Path(__file__).with_name("prepare-personal-build.py")))
+PatchApplicationError = BUILD["PatchApplicationError"]
 
 
 def gh(*args):
@@ -86,9 +89,12 @@ def check_patches(root, version):
         git(patches, "sparse-checkout", "set", "patches")
         git(patches, "fetch", "--depth=1", "origin", pins["unlock_commit"])
         git(patches, "checkout", "--detach", "FETCH_HEAD")
-        subprocess.run([sys.executable, str(root / "scripts/prepare-personal-build.py"),
-                        "--source", str(root), "--patch-repo", str(patches),
-                        "--destination", str(Path(folder) / "siyuan"), "--version", version], check=True)
+        BUILD["prepare"](root, patches, Path(folder) / "siyuan", version)
+
+
+def delegate_conflict(root, context):
+    return subprocess.check_output([sys.executable, str(root / "scripts/personal-copilot.py")],
+                                   input=json.dumps(context), text=True).strip()
 
 
 def publish(root, version, tag):
@@ -115,6 +121,8 @@ def synchronize(root, check_only=False):
     android_commit = tag_commit("siyuan-note/siyuan-android", version)
     if check_only:
         return f"Would merge {UPSTREAM}@{version} ({upstream_commit}) into master and publish {tag}."
+    context = {"version": version, "upstream_commit": upstream_commit, "android_commit": android_commit,
+               "base_commit": git(root, "rev-parse", "HEAD")}
     try:
         commit = merge_tag(root, "https://github.com/" + UPSTREAM + ".git", version, upstream_commit, android_commit)
     except subprocess.CalledProcessError:
@@ -123,11 +131,14 @@ def synchronize(root, check_only=False):
         conflicts = [path for path in conflicts if path]
         if not conflicts:
             raise
-        context = {"version": version, "upstream_commit": upstream_commit, "android_commit": android_commit,
-                   "base_commit": git(root, "rev-parse", "HEAD"), "files": conflicts}
-        return subprocess.check_output([sys.executable, str(root / "scripts/personal-copilot.py")],
-                                       input=json.dumps(context), text=True).strip()
-    check_patches(root, version)
+        context["files"] = conflicts
+        return delegate_conflict(root, context)
+    try:
+        check_patches(root, version)
+    except PatchApplicationError as error:
+        pins = json.loads((root / "scripts/personal-build-inputs.json").read_text(encoding="utf-8"))
+        context.update(kind="patch", unlock_commit=pins["unlock_commit"], files=[error.patch], details=error.detail)
+        return delegate_conflict(root, context)
     publish(root, version, tag)
     return f"Merged {version} into master at {commit}; dispatched release {tag}."
 
