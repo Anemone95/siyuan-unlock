@@ -106,9 +106,11 @@ class RepairLoopTest(unittest.TestCase):
         self.assertIsNone(REPAIR.retest_request([comment], self.pr, {**self.run, "id": 101}))
 
     def test_dispatch_builds_candidate_workflow_and_checks_the_actual_sha(self):
-        with patch.object(REPAIR, "current_head", return_value=True), patch.object(REPAIR, "request") as request:
+        with patch.object(REPAIR, "current_head", return_value=True), patch.object(REPAIR, "request") as request, \
+                patch.dict(os.environ, {"COPILOT_AGENT_TOKEN": "user-token-fixture"}):
             REPAIR.start_build(self.pr, [])
         payload = request.call_args_list[0].args[1]
+        self.assertEqual(request.call_args_list[0].args[2], "user-token-fixture")
         self.assertEqual(payload, {"ref": self.pr["head"]["ref"], "inputs": {"full_build": "true", "repair_pr": "2"}})
         self.assertFalse(REPAIR.candidate_run({**self.run, "head_sha": "0" * 40}, self.pr))
         body = request.call_args_list[1].args[1]["body"]

@@ -229,8 +229,11 @@ def start_build(pr, comments, reason="initial"):
         raise ValueError("A build was already dispatched for this commit; inspect the existing run before resuming")
     if not current_head(pr):
         return "PR changed before build dispatch; waiting for its next event."
+    token = os.environ.get("COPILOT_AGENT_TOKEN")
+    if not token:
+        raise ValueError("COPILOT_AGENT_TOKEN is required to preserve downstream workflow events")
     request(PREFIX + "actions/workflows/personal-check.yml/dispatches", {
-        "ref": pr["head"]["ref"], "inputs": {"full_build": "true", "repair_pr": str(pr["number"])}})
+        "ref": pr["head"]["ref"], "inputs": {"full_build": "true", "repair_pr": str(pr["number"])}}, token)
     request(PREFIX + f"issues/{pr['number']}/comments", {
         "body": f"已启动候选 `{pr['head']['sha']}` 的四平台产物验证；通过后自动转为待审核。\n\n{marker}"})
     return "Dispatched four-platform validation for the candidate branch; results are tied to its actual commit."
