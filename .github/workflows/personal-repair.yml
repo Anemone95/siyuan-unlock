@@ -48,7 +48,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      actions: write
+      actions: read
       issues: write
       pull-requests: write
     steps:
