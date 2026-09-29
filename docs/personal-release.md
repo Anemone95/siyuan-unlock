@@ -45,7 +45,7 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 
 构建失败时，控制器用用户令牌向同一 PR 提交一次 `@copilot` 反馈，包含失败任务与日志链接。Copilot 提交新候选后自动进入下一轮；若代理处理临时外部故障并保持同一提交，失败构建之后的代理完成事件会推动重测。每次代理完成最多触发一次重测；tag 或版本仍未满足时，会带着该轮诊断继续交给代理。手动恢复入口为 `gh workflow run personal-repair.yml -f pr_number=<修复PR编号>`。
 
-控制器调度构建也使用 `COPILOT_AGENT_TOKEN`，使构建完成后能够继续触发验收工作流；该令牌仅进入主分支控制器。构建运行和实际产物均绑定候选提交。[GitHub 跨工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+控制器调度构建也使用 `COPILOT_AGENT_TOKEN`，使构建完成后能够继续触发验收工作流；转换 Copilot PR 的草稿状态同样使用该用户身份。该令牌仅进入主分支控制器，构建运行和实际产物均绑定候选提交。[GitHub 跨工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 
 验收要求同一提交的完整 CI 成功、四平台产物完整有效、九份来源记录一致，以及 Android 签名指纹正确。修复期间保持草稿，并将维护者审核请求延后；控制器核验准确 tag 的祖先关系、源码版本、固定壳提交、补丁哈希和干净源码，再将 PR 转为待审核并请求 `Anemone95` 评审。维护者合并后，下一次同步检查接续正式发布。过期提交的构建结果仅保留记录，最新候选单独验收。
 

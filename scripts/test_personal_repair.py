@@ -104,6 +104,14 @@ class RepairLoopTest(unittest.TestCase):
         request.assert_called_once_with(REPAIR.PREFIX + "pulls/2/requested_reviewers", {"reviewers": [REPAIR.OWNER]}, method="DELETE")
         self.assertEqual(self.pr["requested_reviewers"], [])
 
+    def test_agent_pr_ready_transition_uses_the_user_token(self):
+        result = {"data": {"markPullRequestReadyForReview": {"pullRequest": {"isDraft": False}}}}
+        with patch.object(REPAIR, "request", return_value=result) as request, \
+                patch.dict(os.environ, {"COPILOT_AGENT_TOKEN": "user-token-fixture"}):
+            REPAIR.set_draft(self.pr, False)
+        self.assertEqual(request.call_args.args[2], "user-token-fixture")
+        self.assertFalse(self.pr["draft"])
+
     def test_dispatch_builds_candidate_workflow_and_checks_the_actual_sha(self):
         with patch.object(REPAIR, "current_head", return_value=True), patch.object(REPAIR, "request") as request, \
                 patch.dict(os.environ, {"COPILOT_AGENT_TOKEN": "user-token-fixture"}):

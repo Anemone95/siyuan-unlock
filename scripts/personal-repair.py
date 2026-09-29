@@ -121,9 +121,12 @@ def set_draft(pr, draft):
         pr["requested_reviewers"] = [reviewer for reviewer in pr["requested_reviewers"] if reviewer["login"] != OWNER]
     if pr["draft"] == draft:
         return
+    token = os.environ.get("COPILOT_AGENT_TOKEN")
+    if not token:
+        raise ValueError("COPILOT_AGENT_TOKEN is required to update the agent PR draft state")
     mutation = "convertPullRequestToDraft" if draft else "markPullRequestReadyForReview"
     query = f'mutation {{ {mutation}(input:{{pullRequestId:"{pr["node_id"]}"}}) {{ pullRequest {{ isDraft }} }} }}'
-    result = request("graphql", {"query": query})
+    result = request("graphql", {"query": query}, token)
     if result.get("errors") or result["data"][mutation]["pullRequest"]["isDraft"] != draft:
         raise ValueError("GitHub did not update the repair PR draft state")
     pr["draft"] = draft
