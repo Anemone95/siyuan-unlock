@@ -39,7 +39,13 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 
 仓库的 Issues 已启用，Copilot 已出现在可分配代理列表。自动分配需要仓库 secret `COPILOT_AGENT_TOKEN`，保存仅选择本仓库的 fine-grained 用户令牌，授予 Metadata 读取权限，以及 Actions、Contents、Issues、Pull requests 读写权限。该用户需要拥有可用的 Copilot cloud agent 订阅及仓库访问权。[GitHub Copilot API 的认证要求](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-via-the-api)
 
-配置后，手动运行同步工作流并选中 `check_only`，会核验该令牌对应的 Copilot 账户和仓库访问。Copilot PR 的 CI 按 GitHub 设置执行，默认情况下维护者在 PR 中批准工作流运行；检查和人工评审完成后合并，下一次同步检查接续四平台发布。[GitHub Copilot 的 PR 工作流规则](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-on-github#managing-github-actions-workflow-runs)
+配置后，手动运行同步工作流并选中 `check_only`，会核验该令牌对应的 Copilot 账户和仓库访问。
+
+`personal-repair.yml` 根据 Copilot 和构建事件推进修复，控制逻辑来自 `master` 的 `scripts/personal-repair.py`。控制器核对本仓库 Copilot PR、可信任务 Issue 与准确版本，保持修复 PR 为草稿，并通过 `workflow_dispatch` 固定候选提交运行四平台验证。原生代理会使用工作中的草稿 PR；维护者收到审核请求时，当前提交的构建和产物已经验收。
+
+构建失败时，控制器用用户令牌向同一 PR 提交一次 `@copilot` 反馈，包含失败任务与日志链接。Copilot 提交新候选后自动进入下一轮；若代理确认是临时外部故障，可按反馈中的 `siyuan-repair-retest` 标记发送评论，针对同一提交和失败运行重新验证。每条有效请求消费一次，推进依赖实际事件。手动恢复入口为 `gh workflow run personal-repair.yml -f pr_number=<修复PR编号>`。
+
+验收要求同一提交的完整 CI 成功、四平台产物完整有效、九份来源记录一致，以及 Android 签名指纹正确。控制器核验准确 tag 的祖先关系、源码版本、固定壳提交、补丁哈希和干净源码，再将 PR 转为待审核并请求 `Anemone95` 评审。维护者合并后，下一次同步检查接续正式发布。过期提交的构建结果仅保留记录，最新候选单独验收。
 
 ## 手动同步与固定依赖
 
@@ -113,8 +119,8 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-check.yml` 在主分支推送和 PR 上执行 Python 发布工具测试、workflow 静态检查、真实解锁补丁与账户校验、Go race、前端协议和 lint，并复用完整 iOS 构建来产生可下载的测试 IPA。此 CI 使用只读仓库权限。
 
-手动运行该检查并勾选 `full_build`，还会构建桌面、自签名 Android 和三种架构的容器镜像。产物保存在 Actions artifacts，容器构建采用本地缓存输出，用于四平台发布前验证。
+手动运行该检查并勾选 `full_build`，还会构建桌面、自签名 Android 和三种架构的容器镜像。产物保存在 Actions artifacts，容器导出为可下载的 OCI 归档。修复控制器在候选分支调度构建并传入 `repair_pr`，使应用源码、构建脚本与工作流均来自实际候选提交；运行标题和来源记录共同校验 SHA。控制器自身始终使用 `master` 的实现和权限，构建仅获得检查所需的只读令牌与 Android 签名配置。
 
 `personal-android.yml` 和 `personal-docker.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，分别验证 Android 工具链与签名、三种架构的容器构建。Docker 独立入口仅执行构建验证。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
 
-本地核验包括：41 项发布、上游同步与 Copilot 分配回归、12 项前端测试、Go race、Swift 场景与页面状态测试、完整 workflow actionlint，以及两个真实 Android 补丁。同步回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖实际冲突上下文、任务去重、外部 Issue 隔离、缺失令牌、分配失败和初始验收清单。GitHub 上已实测草稿创建、同输入复用、混合输入拒绝和文件上传，并清理了测试草稿及资产。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 最新场景改动的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
+发布工具回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖任务上下文与去重、权限边界、初始验收清单、构建失败反馈、重测请求、同提交产物核验与审核状态转换。恢复验证包括前端协议、Go race 和 Swift 场景与页面状态测试；工作流通过 actionlint 检查。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 场景的真机覆盖见 [ios-recovery.md](ios-recovery.md)。

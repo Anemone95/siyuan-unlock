@@ -1,4 +1,5 @@
 name: Check personal SiYuan changes
+run-name: "${{ inputs.repair_pr && format('Repair PR #{0} @{1}', inputs.repair_pr, github.sha) || format('Check personal SiYuan changes ({0})', github.ref_name) }}"
 
 on:
   push:
@@ -11,13 +12,17 @@ on:
         description: Build desktop, signed Android and container artifacts as well
         type: boolean
         default: false
+      repair_pr:
+        description: Managed repair PR number
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: personal-check-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: personal-check-${{ github.event_name }}-${{ inputs.repair_pr || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.repair_pr != '' }}
 
 jobs:
   build-tools:
@@ -119,7 +124,9 @@ jobs:
       version: ${{ needs.recovery.outputs.version }}
       unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
       android_ref: ${{ needs.recovery.outputs.android_ref }}
-    secrets: inherit
+    secrets:
+      KEYSTORE: ${{ secrets.KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
   docker:
     if: github.event_name == 'workflow_dispatch' && inputs.full_build
