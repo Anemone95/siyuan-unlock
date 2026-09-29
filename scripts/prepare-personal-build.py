@@ -23,6 +23,22 @@ def git(repo, *args, input=None, stderr=None):
     return subprocess.check_output(["git", "-C", str(repo), *args], input=input, stderr=stderr)
 
 
+def normalize_version_tag(version):
+    return "v" + version.removeprefix("v")
+
+
+def patch_override(source, version, name):
+    return source / "scripts" / "patches" / normalize_version_tag(version) / name
+
+
+def is_dirty_path(repo, relative):
+    if git(repo, "diff", "--name-only", "HEAD", "--", relative).strip():
+        return True
+    if git(repo, "ls-files", "--others", "--exclude-standard", "--", relative).strip():
+        return True
+    return False
+
+
 def prepare(source, patches, destination, version):
     if destination.exists():
         raise ValueError(f"Build destination already exists: {destination}")
@@ -39,6 +55,15 @@ def prepare(source, patches, destination, version):
     contents = []
     for name in PATCHES:
         path = "patches/siyuan/" + name
+        override = patch_override(source, version, name)
+        override_ref = override.relative_to(source).as_posix()
+        if is_dirty_path(source, override_ref):
+            raise ValueError(f"Patch override has uncommitted modifications: {override_ref}")
+        if override.is_file():
+            data = git(source, "show", f"{source_commit}:{override_ref}")
+            selected.append({"path": path, "override": override_ref, "sha256": hashlib.sha256(data).hexdigest()})
+            contents.append(data)
+            continue
         if git(patches, "diff", "--name-only", "HEAD", "--", path).strip():
             raise ValueError(f"Patch has uncommitted modifications: {name}")
         # 使用 Git 对象中的补丁原文，使 Windows 换行转换不影响输入哈希。

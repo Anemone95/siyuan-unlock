@@ -104,6 +104,55 @@ class BuildSnapshotTest(unittest.TestCase):
         record = self.prepare()
         self.assertEqual(record["unlock_commit"], self.git(self.patches, "rev-parse", "HEAD").decode().strip())
 
+    def test_uses_versioned_source_patch_override_when_present(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
+        self.commit(self.source)
+        record = self.prepare()
+        self.assertEqual((self.base / "build/override-default").read_text(), "enabled\n")
+        self.assertFalse((self.base / "build/unlock-1").exists())
+        selected = [item for item in record["patches"] if item["path"] == "patches/siyuan/default-config.patch"][0]
+        self.assertEqual(selected["override"], "scripts/patches/v3.8.5/default-config.patch")
+
+    def test_override_rejects_uncommitted_edit(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
+        self.commit(self.source)
+        override.write_text(override.read_text() + "\n")
+        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
+            self.prepare()
+
+    def test_version_without_v_prefix_uses_same_override_directory(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
+        self.commit(self.source)
+        record = self.prepare(version="3.8.5")
+        self.assertEqual((self.base / "build/override-default").read_text(), "enabled\n")
+        selected = [item for item in record["patches"] if item["path"] == "patches/siyuan/default-config.patch"][0]
+        self.assertEqual(selected["override"], "scripts/patches/v3.8.5/default-config.patch")
+
+    def test_override_rejects_uncommitted_deletion(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_bytes((self.patches / "patches/siyuan/default-config.patch").read_bytes())
+        self.commit(self.source)
+        override.unlink()
+        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
+            self.prepare()
+        self.assertFalse(override.exists())
+        self.assertFalse((self.base / "build").exists())
+
+    def test_override_rejects_untracked_input(self):
+        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
+        override.parent.mkdir(parents=True, exist_ok=True)
+        override.write_text("uncommitted patch", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
+            self.prepare()
+        self.assertEqual(override.read_text(), "uncommitted patch")
+
 
 if __name__ == "__main__":
     unittest.main()
