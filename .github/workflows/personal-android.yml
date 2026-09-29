@@ -61,6 +61,7 @@ jobs:
             git apply --check --ignore-whitespace "../../unlock-patches/patches/siyuan-android/$patch.patch"
             git apply --ignore-whitespace "../../unlock-patches/patches/siyuan-android/$patch.patch"
           done
+          python ../scripts/prepare-personal-android.py .
           mkdir -p app/src/main/assets app/libs
           python -c 'import json,subprocess; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_commit"]=subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip(); p.write_text(json.dumps(d,indent=2)+"\n")'
       - name: Set up Go

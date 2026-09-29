@@ -111,6 +111,8 @@ python3 scripts/prepare-personal-build.py \
 
 Go 和 gomobile 版本来自源码 `go.mod`，pnpm 版本来自 `app/package.json`，前端安装使用冻结的锁文件。Android 使用 JDK 17、SDK 36、Build Tools 36.0.0 和 NDK 28.2.13676358；Windows 显式配置 MinGW GCC 和固定版本的 goversioninfo。解锁账户与同步校验来自同一补丁提交；恢复和 session 测试来自个人源码。iOS IPA 可按设备证书和 App Group 配置签名，保留分享扩展。
 
+Android 准备脚本在临时壳源码中将阿里云镜像映射到 Google Maven、Maven Central 和 Gradle Plugin Portal，保留其余依赖配置，使 GitHub runner 直接访问官方仓库。该转换随主源码提交一起记录和评审。
+
 ## 签名、CI 与验证
 
 Android 的固定自签名发布密钥已配置为 `KEYSTORE`、`KEYSTORE_PASSWORD` 两个 secrets，公钥指纹保存在 `ANDROID_SIGNING_SHA256` 仓库变量中。流水线使用 apksigner 核验两种包名的 APK 都由同一证书签名。主密钥位于本机仓库外的 `~/.config/siyuan-unlock/android/siyuan-release.jks`，后续升级沿用该密钥。[Android 签名说明](https://developer.android.com/studio/publish/app-signing)
