@@ -23,8 +23,20 @@ def git(repo, *args, input=None, stderr=None):
     return subprocess.check_output(["git", "-C", str(repo), *args], input=input, stderr=stderr)
 
 
+def normalize_version_tag(version):
+    return "v" + version.removeprefix("v")
+
+
 def patch_override(source, version, name):
-    return source / "scripts" / "patches" / version / name
+    return source / "scripts" / "patches" / normalize_version_tag(version) / name
+
+
+def is_dirty_path(repo, relative):
+    if git(repo, "diff", "--name-only", "HEAD", "--", relative).strip():
+        return True
+    if git(repo, "ls-files", "--others", "--exclude-standard", "--", relative).strip():
+        return True
+    return False
 
 
 def prepare(source, patches, destination, version):
@@ -46,6 +58,8 @@ def prepare(source, patches, destination, version):
         override = patch_override(source, version, name)
         if override.is_file():
             override_ref = override.relative_to(source).as_posix()
+            if is_dirty_path(source, override_ref):
+                raise ValueError(f"Patch override has uncommitted modifications: {override_ref}")
             data = git(source, "show", f"{source_commit}:{override_ref}")
             selected.append({"path": path, "override": override_ref, "sha256": hashlib.sha256(data).hexdigest()})
             contents.append(data)
