@@ -84,14 +84,6 @@ def resolve_event(event, event_name):
     if event_name == "workflow_dispatch":
         number = int(event["inputs"]["pr_number"])
         return number if managed_pr(number) else None
-    if event_name == "issue_comment":
-        if not event["issue"].get("pull_request"):
-            return None
-        comment = request(PREFIX + f"issues/comments/{int(event['comment']['id'])}")
-        if not is_copilot(comment["user"]["login"]) or "<!-- siyuan-repair-retest:" not in comment["body"]:
-            return None
-        number = int(event["issue"]["number"])
-        return number if managed_pr(number) else None
     run = request(PREFIX + f"actions/runs/{int(event['workflow_run']['id'])}")
     if run["path"].split("@", 1)[0] not in {CHECK_PATH, AGENT_PATH} or (run.get("head_repository") or {}).get("full_name") != REPOSITORY:
         return None
@@ -138,19 +130,7 @@ def has_marker(comments, marker):
     return any(item["user"]["login"] in AUTHORS and marker in item["body"] for item in comments)
 
 
-def is_copilot(login):
-    return login.lower() in {"copilot", "copilot-swe-agent[bot]", "copilot-swe-agent"}
-
-
-def retest_request(comments, pr, run):
-    marker = f"<!-- siyuan-repair-retest: {pr['head']['sha']} {run['id']} -->"
-    for item in reversed(comments):
-        if is_copilot(item["user"]["login"]) and marker in [line.strip() for line in item["body"].splitlines()]:
-            return "retest-" + str(item["id"])
-    return None
-
-
-def feedback(pr, comments, key, detail, run_id=None):
+def feedback(pr, comments, key, detail):
     marker = f"<!-- siyuan-repair-feedback: {pr['head']['sha']} {key} -->"
     if has_marker(comments, marker):
         return "Waiting for Copilot to produce a new candidate commit; this failure was already reported."
@@ -162,9 +142,6 @@ def feedback(pr, comments, key, detail, run_id=None):
     body = (f"@copilot 当前候选 `{pr['head']['sha']}` 尚未通过完整产物验收。\n\n{detail}\n\n"
             "请读取具体失败日志，合并最新 master 的验收工作流，保留初始任务的 tag、版本、补丁和恢复语义要求，持续修复并提交新的候选。"
             "修复期间保持草稿；自动控制器会再次构建四个平台，全部产物验收后统一请求维护者审核。\n\n" + marker)
-    if run_id is not None:
-        body += ("\n\n若确认是临时外部故障且无需修改代码，请在 PR 评论中单独一行发送 "
-                 f"`<!-- siyuan-repair-retest: {pr['head']['sha']} {run_id} -->`，控制器将对同一提交重新执行完整验证。")
     request(PREFIX + f"issues/{pr['number']}/comments", {"body": body}, token)
     return "Reported the failure to Copilot; the PR remains a draft."
 
@@ -246,16 +223,19 @@ def reconcile(number):
     pr, context = managed
     comments = pages(f"issues/{number}/comments")
     branch_runs = pages("actions/runs?" + urlencode({"branch": pr["head"]["ref"]}), "workflow_runs")
-    if any(run["path"].split("@", 1)[0] == AGENT_PATH and run["status"] != "completed" for run in branch_runs):
+    agents = [run for run in branch_runs if run["path"].split("@", 1)[0] == AGENT_PATH]
+    if any(run["status"] != "completed" for run in agents):
         set_draft(pr, True)
         return "Waiting for the active Copilot session."
+    agent = max(agents, key=lambda run: run["id"], default=None)
     try:
         problem = preflight(pr, context)
     except (ValueError, KeyError, TypeError) as error:
         problem = "候选提交的版本或 tag 信息无法验证：" + str(error)
     if problem:
         set_draft(pr, True)
-        return feedback(pr, comments, "preflight", problem)
+        key = "preflight" + (f"-agent-{agent['id']}" if agent and agent["conclusion"] == "success" else "")
+        return feedback(pr, comments, key, problem)
     runs = pages("actions/workflows/personal-check.yml/runs?event=workflow_dispatch", "workflow_runs")
     candidates = sorted((run for run in runs if candidate_run(run, pr)), key=lambda run: run["id"], reverse=True)
     if not candidates:
@@ -267,13 +247,12 @@ def reconcile(number):
         return "Waiting for candidate build: " + run["html_url"]
     if run["conclusion"] in {"failure", "timed_out"}:
         set_draft(pr, True)
-        retest = retest_request(comments, pr, run)
-        if retest:
-            return start_build(pr, comments, retest)
+        if agent and agent["conclusion"] == "success" and agent["created_at"] > run["updated_at"]:
+            return start_build(pr, comments, f"agent-{agent['id']}")
         jobs = pages(f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
         failed = [job["name"] for job in jobs if job["conclusion"] in {"failure", "timed_out"}]
         return feedback(pr, comments, f"{run['id']}-{run['run_attempt']}",
-                        "构建失败：" + run["html_url"] + "\n\n失败任务：" + json.dumps(failed, ensure_ascii=False), run["id"])
+                        "构建失败：" + run["html_url"] + "\n\n失败任务：" + json.dumps(failed, ensure_ascii=False))
     if run["conclusion"] != "success":
         set_draft(pr, True)
         raise ValueError("Build is cancelled or requires external action: " + run["html_url"])

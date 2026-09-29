@@ -23,6 +23,7 @@ class RepairLoopTest(unittest.TestCase):
                    "base": {"ref": "master"}, "head": {"sha": self.head, "ref": "copilot/repair-v386", "repo": {"full_name": REPAIR.REPOSITORY}},
                    "user": {"login": "Copilot"}, "requested_reviewers": [{"login": REPAIR.OWNER}]}
         self.run = {"id": 100, "run_attempt": 1, "status": "completed", "conclusion": "success", "event": "workflow_dispatch",
+                    "updated_at": "2026-09-29T09:00:00Z",
                     "path": REPAIR.CHECK_PATH, "display_title": f"Repair PR #2 @{self.head}", "head_branch": self.pr["head"]["ref"],
                     "head_sha": self.head, "html_url": "https://github.com/Anemone95/siyuan-unlock/actions/runs/100"}
         self.artifacts = [{"id": i, "name": name, "expired": False, "size_in_bytes": 100}
@@ -97,14 +98,6 @@ class RepairLoopTest(unittest.TestCase):
             REPAIR.feedback(self.pr, [{"body": body, "user": {"login": REPAIR.OWNER}}], "100-1", "Build log URL")
             request.assert_not_called()
 
-    def test_only_copilot_can_request_retest_for_the_exact_failed_run(self):
-        marker = f"<!-- siyuan-repair-retest: {self.head} 100 -->"
-        comment = {"id": 10, "body": marker, "user": {"login": "Copilot"}}
-        self.assertEqual(REPAIR.retest_request([comment], self.pr, self.run), "retest-10")
-        self.assertIsNone(REPAIR.retest_request([{**comment, "user": {"login": REPAIR.OWNER}}], self.pr, self.run))
-        self.assertIsNone(REPAIR.retest_request([{**comment, "body": marker.replace(self.head, "0" * 40)}], self.pr, self.run))
-        self.assertIsNone(REPAIR.retest_request([comment], self.pr, {**self.run, "id": 101}))
-
     def test_dispatch_builds_candidate_workflow_and_checks_the_actual_sha(self):
         with patch.object(REPAIR, "current_head", return_value=True), patch.object(REPAIR, "request") as request, \
                 patch.dict(os.environ, {"COPILOT_AGENT_TOKEN": "user-token-fixture"}):
@@ -118,7 +111,7 @@ class RepairLoopTest(unittest.TestCase):
             REPAIR.start_build(self.pr, [{"body": body, "user": {"login": "github-actions[bot]"}}])
         request.assert_not_called()
 
-    def reconcile_fixture(self, run=None, active_agent=False, current=True, artifacts=None):
+    def reconcile_fixture(self, run=None, active_agent=False, current=True, artifacts=None, agent=None):
         run = self.run if run is None else run
         artifacts = self.artifacts if artifacts is None else artifacts
 
@@ -126,7 +119,9 @@ class RepairLoopTest(unittest.TestCase):
             if path.endswith("/comments"):
                 return []
             if path.startswith("actions/runs?branch="):
-                return [{"path": REPAIR.AGENT_PATH, "status": "in_progress", "name": "Addressing comment on PR #2"}] if active_agent else []
+                if active_agent:
+                    return [{"path": REPAIR.AGENT_PATH, "status": "in_progress", "name": "Addressing comment on PR #2"}]
+                return [agent] if agent else []
             if path.endswith("/artifacts"):
                 return artifacts
             if "/jobs?" in path:
@@ -158,6 +153,30 @@ class RepairLoopTest(unittest.TestCase):
         self.assertEqual(REPAIR.reconcile(2), "feedback sent")
         draft.assert_called_with(self.pr, True)
         self.assertIn("android / build", feedback.call_args.args[3])
+
+    def test_completed_agent_retests_same_commit_after_the_failed_build(self):
+        agent = {"id": 200, "path": REPAIR.AGENT_PATH, "status": "completed", "conclusion": "success",
+                 "created_at": "2026-09-29T09:01:00Z"}
+        draft, feedback = self.reconcile_fixture(run={**self.run, "conclusion": "failure"}, agent=agent)
+        with patch.object(REPAIR, "start_build", return_value="dispatched") as dispatch:
+            self.assertEqual(REPAIR.reconcile(2), "dispatched")
+        dispatch.assert_called_once_with(self.pr, [], "agent-200")
+        feedback.assert_not_called()
+
+    def test_old_agent_completion_cannot_retest_a_later_failure(self):
+        agent = {"id": 50, "path": REPAIR.AGENT_PATH, "status": "completed", "conclusion": "success",
+                 "created_at": "2026-09-29T08:00:00Z"}
+        self.reconcile_fixture(run={**self.run, "conclusion": "failure"}, agent=agent)
+        with patch.object(REPAIR, "start_build") as dispatch:
+            self.assertEqual(REPAIR.reconcile(2), "feedback sent")
+        dispatch.assert_not_called()
+
+    def test_incomplete_tag_repair_receives_new_feedback_after_each_agent_attempt(self):
+        agent = {"id": 200, "path": REPAIR.AGENT_PATH, "status": "completed", "conclusion": "success"}
+        draft, feedback = self.reconcile_fixture(agent=agent)
+        with patch.object(REPAIR, "preflight", return_value="Target tag is still missing"):
+            REPAIR.reconcile(2)
+        self.assertEqual(feedback.call_args.args[2], "preflight-agent-200")
 
     def test_running_build_is_reused(self):
         draft, feedback = self.reconcile_fixture(run={**self.run, "status": "in_progress", "conclusion": None})

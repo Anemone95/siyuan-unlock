@@ -43,7 +43,7 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 
 `personal-repair.yml` 根据 Copilot 和构建事件推进修复，控制逻辑来自 `master` 的 `scripts/personal-repair.py`。控制器核对本仓库 Copilot PR、可信任务 Issue 与准确版本，保持修复 PR 为草稿，并通过 `workflow_dispatch` 固定候选提交运行四平台验证。原生代理会使用工作中的草稿 PR；维护者收到审核请求时，当前提交的构建和产物已经验收。
 
-构建失败时，控制器用用户令牌向同一 PR 提交一次 `@copilot` 反馈，包含失败任务与日志链接。Copilot 提交新候选后自动进入下一轮；若代理确认是临时外部故障，可按反馈中的 `siyuan-repair-retest` 标记发送评论，针对同一提交和失败运行重新验证。每条有效请求消费一次，推进依赖实际事件。手动恢复入口为 `gh workflow run personal-repair.yml -f pr_number=<修复PR编号>`。
+构建失败时，控制器用用户令牌向同一 PR 提交一次 `@copilot` 反馈，包含失败任务与日志链接。Copilot 提交新候选后自动进入下一轮；若代理处理临时外部故障并保持同一提交，失败构建之后的代理完成事件会推动重测。每次代理完成最多触发一次重测；tag 或版本仍未满足时，会带着该轮诊断继续交给代理。手动恢复入口为 `gh workflow run personal-repair.yml -f pr_number=<修复PR编号>`。
 
 控制器调度构建也使用 `COPILOT_AGENT_TOKEN`，使构建完成后能够继续触发验收工作流；该令牌仅进入主分支控制器。构建运行和实际产物均绑定候选提交。[GitHub 跨工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 
@@ -125,4 +125,4 @@ GHCR 使用当前仓库的 `GITHUB_TOKEN` 和 `packages: write` 权限，镜像�
 
 `personal-android.yml` 和 `personal-docker.yml` 也提供独立手动入口，使用同样的版本和固定提交参数，分别验证 Android 工具链与签名、三种架构的容器构建。Docker 独立入口仅执行构建验证。手动全平台检查与推送检查使用不同的并发组，允许正在运行的完整构建保留结果。
 
-发布工具回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖任务上下文与去重、权限边界、初始验收清单、构建失败反馈、重测请求、同提交产物核验与审核状态转换。恢复验证包括前端协议、Go race 和 Swift 场景与页面状态测试；工作流通过 actionlint 检查。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 场景的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
+发布工具回归覆盖上游分支领先 tag、保留个人修改、annotated tag、重复发布、补丁失败移交和并发推送保护；Copilot 回归覆盖任务上下文与去重、权限边界、初始验收清单、构建失败反馈、代理完成后重测、同提交产物核验与审核状态转换。恢复验证包括前端协议、Go race 和 Swift 场景与页面状态测试；工作流通过 actionlint 检查。完整四平台 Release 支持手动入口和上游正式版自动同步入口；iOS 场景的真机覆盖见 [ios-recovery.md](ios-recovery.md)。
