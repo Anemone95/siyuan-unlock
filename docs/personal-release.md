@@ -47,7 +47,7 @@ gh workflow run personal-release.yml --ref vX.Y.Z-unlock.1 -f version=vX.Y.Z -f 
 
 控制器调度构建也使用 `COPILOT_AGENT_TOKEN`，使构建完成后能够继续触发验收工作流；该令牌仅进入主分支控制器。构建运行和实际产物均绑定候选提交。[GitHub 跨工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
 
-验收要求同一提交的完整 CI 成功、四平台产物完整有效、九份来源记录一致，以及 Android 签名指纹正确。控制器核验准确 tag 的祖先关系、源码版本、固定壳提交、补丁哈希和干净源码，再将 PR 转为待审核并请求 `Anemone95` 评审。维护者合并后，下一次同步检查接续正式发布。过期提交的构建结果仅保留记录，最新候选单独验收。
+验收要求同一提交的完整 CI 成功、四平台产物完整有效、九份来源记录一致，以及 Android 签名指纹正确。修复期间保持草稿，并将维护者审核请求延后；控制器核验准确 tag 的祖先关系、源码版本、固定壳提交、补丁哈希和干净源码，再将 PR 转为待审核并请求 `Anemone95` 评审。维护者合并后，下一次同步检查接续正式发布。过期提交的构建结果仅保留记录，最新候选单独验收。
 
 ## 手动同步与固定依赖
 

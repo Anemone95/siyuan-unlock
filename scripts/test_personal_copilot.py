@@ -103,6 +103,12 @@ class CopilotConflictTest(unittest.TestCase):
         with patch.object(COPILOT.subprocess, "check_output", return_value=""):
             self.assertIsNone(COPILOT.request("repos/owner/repo/actions/workflows/check.yml/dispatches", {"ref": "master"}))
 
+    def test_api_can_remove_premature_review_requests(self):
+        with patch.object(COPILOT.subprocess, "check_output", return_value="{}") as command:
+            COPILOT.request("repos/owner/repo/pulls/2/requested_reviewers", {"reviewers": ["owner"]}, method="DELETE")
+        arguments = command.call_args.args[0]
+        self.assertEqual(arguments[arguments.index("--method") + 1], "DELETE")
+
 
 if __name__ == "__main__":
     unittest.main()

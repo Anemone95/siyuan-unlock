@@ -116,6 +116,9 @@ def current_head(pr):
 
 
 def set_draft(pr, draft):
+    if draft and OWNER in {reviewer["login"] for reviewer in pr["requested_reviewers"]}:
+        request(PREFIX + f"pulls/{pr['number']}/requested_reviewers", {"reviewers": [OWNER]}, method="DELETE")
+        pr["requested_reviewers"] = [reviewer for reviewer in pr["requested_reviewers"] if reviewer["login"] != OWNER]
     if pr["draft"] == draft:
         return
     mutation = "convertPullRequestToDraft" if draft else "markPullRequestReadyForReview"

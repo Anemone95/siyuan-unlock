@@ -98,6 +98,12 @@ class RepairLoopTest(unittest.TestCase):
             REPAIR.feedback(self.pr, [{"body": body, "user": {"login": REPAIR.OWNER}}], "100-1", "Build log URL")
             request.assert_not_called()
 
+    def test_draft_repair_defers_an_existing_maintainer_review_request(self):
+        with patch.object(REPAIR, "request") as request:
+            REPAIR.set_draft(self.pr, True)
+        request.assert_called_once_with(REPAIR.PREFIX + "pulls/2/requested_reviewers", {"reviewers": [REPAIR.OWNER]}, method="DELETE")
+        self.assertEqual(self.pr["requested_reviewers"], [])
+
     def test_dispatch_builds_candidate_workflow_and_checks_the_actual_sha(self):
         with patch.object(REPAIR, "current_head", return_value=True), patch.object(REPAIR, "request") as request, \
                 patch.dict(os.environ, {"COPILOT_AGENT_TOKEN": "user-token-fixture"}):

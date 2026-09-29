@@ -13,7 +13,7 @@ COPILOT = "copilot-swe-agent[bot]"
 CONTEXT_MARKER = "<!-- siyuan-repair-context: "
 
 
-def request(path, payload=None, token=None):
+def request(path, payload=None, token=None, method="POST"):
     env = dict(os.environ)
     if token:
         env["GH_TOKEN"] = token
@@ -22,7 +22,7 @@ def request(path, payload=None, token=None):
         if payload is not None:
             file = Path(folder) / "request.json"
             file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            command += ["--method", "POST", "--input", str(file)]
+            command += ["--method", method, "--input", str(file)]
         output = subprocess.check_output(command, env=env, text=True)
         return json.loads(output) if output.strip() else None
 
