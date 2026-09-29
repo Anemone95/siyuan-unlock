@@ -1,0 +1,2 @@
+# 补丁上下文保留统一差异前缀和目标文件缩进。
+*.patch whitespace=-blank-at-eol,-space-before-tab
