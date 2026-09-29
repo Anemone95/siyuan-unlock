@@ -23,6 +23,10 @@ def git(repo, *args, input=None, stderr=None):
     return subprocess.check_output(["git", "-C", str(repo), *args], input=input, stderr=stderr)
 
 
+def patch_override(source, version, name):
+    return source / "scripts" / "patches" / version / name
+
+
 def prepare(source, patches, destination, version):
     if destination.exists():
         raise ValueError(f"Build destination already exists: {destination}")
@@ -39,6 +43,13 @@ def prepare(source, patches, destination, version):
     contents = []
     for name in PATCHES:
         path = "patches/siyuan/" + name
+        override = patch_override(source, version, name)
+        if override.is_file():
+            override_ref = override.relative_to(source).as_posix()
+            data = git(source, "show", f"{source_commit}:{override_ref}")
+            selected.append({"path": path, "override": override_ref, "sha256": hashlib.sha256(data).hexdigest()})
+            contents.append(data)
+            continue
         if git(patches, "diff", "--name-only", "HEAD", "--", path).strip():
             raise ValueError(f"Patch has uncommitted modifications: {name}")
         # 使用 Git 对象中的补丁原文，使 Windows 换行转换不影响输入哈希。

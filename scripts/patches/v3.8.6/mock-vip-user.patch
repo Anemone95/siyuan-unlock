@@ -1,0 +1,175 @@
+diff --git a/kernel/api/setting.go b/kernel/api/setting.go
+index 561675208..b8e04c8b7 100644
+--- a/kernel/api/setting.go
++++ b/kernel/api/setting.go
+@@ -830,18 +830,23 @@ var getPublish = contractHandler(apicontract.GetPublish, func(c *gin.Context, re
+ })
+ 
+ var getCloudUser = contractHandler(apicontract.GetCloudUser, func(c *gin.Context, request apicontract.SettingCloudUserRequest) apicontract.Response[*apicontract.SettingUser] {
+-	user, err := model.GetCloudUser(request.Token, request.Cached)
+-	data := settingUserPayload(user)
+-	if err == nil {
+-		return apicontract.Success(data)
+-	}
+-	if model.IsInvalidUserRefresh(err) {
+-		return apicontract.GetCloudUser.FailureWithData(255, model.Conf.Language(19), nil)
+-	}
+-	if model.IsCloudAssetSourceChange(err) {
+-		return apicontract.GetCloudUser.FailureWithData(1, err.Error(), data)
+-	}
+-	return apicontract.GetCloudUser.FailureWithData(1, model.Conf.Language(18), data)
++	user := &conf.User{
++		UserId:                     "0",
++		UserName:                   "_",
++		UserAvatarURL:              "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
++		UserTitles:                 []*conf.UserTitle{},
++		UserCreateTime:             "29991231 00:00:00",
++		UserSiYuanProExpireTime:    -1,
++		UserToken:                  "token",
++		UserTokenExpireTime:        "32503593600",
++		UserSiYuanSubscriptionType: 1,
++		UserSiYuanOneTimePayStatus: 1,
++	}
++	model.Conf.SetUser(user)
++	data, _ := gulu.JSON.MarshalJSON(user)
++	model.Conf.UserData = util.AESEncrypt(string(data))
++	model.Conf.Save()
++	return apicontract.Success(settingUserPayload(user))
+ }, func(c *gin.Context) *apicontract.Response[*apicontract.SettingUser] {
+ 	if model.IsAdminRoleContext(c) {
+ 		return nil
+diff --git a/kernel/model/cloud_account_auth.go b/kernel/model/cloud_account_auth.go
+index 8c5330cdd..814e4f85d 100644
+--- a/kernel/model/cloud_account_auth.go
++++ b/kernel/model/cloud_account_auth.go
+@@ -22,6 +22,10 @@ func cloudAccountAuthFailureHandler(token string) func() {
+ 	if requestedUser == nil {
+ 		return func() {}
+ 	}
++	// 本地免登录身份没有云端会话，云端认证失败不能清除其同步权限。
++	if requestedUser.UserId == "0" && requestedUser.UserToken == "token" {
++		return func() {}
++	}
+ 	return func() {
+ 		cloudAccountMu.Lock()
+ 		defer cloudAccountMu.Unlock()
+diff --git a/kernel/model/cloud_service.go b/kernel/model/cloud_service.go
+index b236e60f2..96ad7ee53 100644
+--- a/kernel/model/cloud_service.go
++++ b/kernel/model/cloud_service.go
+@@ -270,7 +270,6 @@ var (
+ 
+ func RefreshCheckJob2H() {
+ 	go refreshSubscriptionExpirationRemind()
+-	go refreshUser()
+ 	go refreshAnnouncement()
+ }
+ 
+diff --git a/kernel/api/unlock_cloud_account_test.go b/kernel/api/unlock_cloud_account_test.go
+new file mode 100644
+index 000000000..e9ecd3308
+--- /dev/null
++++ b/kernel/api/unlock_cloud_account_test.go
+@@ -0,0 +1,68 @@
++package api
++
++import (
++	"encoding/hex"
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++	"github.com/siyuan-note/siyuan/kernel/conf"
++	"github.com/siyuan-note/siyuan/kernel/model"
++	"github.com/siyuan-note/siyuan/kernel/util"
++)
++
++func TestUnlockGetCloudUserPersistsIdentity(t *testing.T) {
++	oldConf, oldDir, oldReadOnly := model.Conf, util.ConfDir, util.ReadOnly
++	t.Cleanup(func() { model.Conf, util.ConfDir, util.ReadOnly = oldConf, oldDir, oldReadOnly })
++	model.Conf, util.ConfDir, util.ReadOnly = model.NewAppConf(), t.TempDir(), false
++
++	for _, role := range []model.Role{model.RoleReader, model.RoleEditor, model.RoleAdministrator} {
++		recorder := httptest.NewRecorder()
++		context, _ := gin.CreateTestContext(recorder)
++		context.Set(model.RoleContextKey, role)
++		context.Request = httptest.NewRequest(http.MethodPost, "/api/setting/getCloudUser", strings.NewReader(`{}`))
++		getCloudUser(context)
++		requireAPIContract(t, http.MethodPost, "/api/setting/getCloudUser", recorder)
++		var response struct {
++			Code int        `json:"code"`
++			Data *conf.User `json:"data"`
++		}
++		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != 0 {
++			t.Fatalf("getCloudUser failed: %s, %v", recorder.Body.String(), err)
++		}
++		if role != model.RoleAdministrator {
++			if response.Data != nil || model.Conf.GetUser() != nil || model.Conf.UserData != "" {
++				t.Fatal("non-admin request must not create or expose the local identity")
++			}
++			continue
++		}
++		if response.Data == nil || response.Data.UserId != "0" || response.Data.UserSiYuanOneTimePayStatus != 1 || !model.IsPaidUser() {
++			t.Fatal("admin boot request did not restore account-free sync")
++		}
++	}
++
++	data, err := os.ReadFile(filepath.Join(util.ConfDir, "conf.json"))
++	if err != nil {
++		t.Fatalf("local identity was not saved: %v", err)
++	}
++	var saved struct {
++		UserData string `json:"userData"`
++	}
++	if err = json.Unmarshal(data, &saved); err != nil || saved.UserData == "" {
++		t.Fatalf("saved configuration has no local identity: %v", err)
++	}
++	data, err = hex.DecodeString(string(util.AESDecrypt(saved.UserData)))
++	if err != nil {
++		t.Fatal(err)
++	}
++	var restored conf.User
++	if err = json.Unmarshal(data, &restored); err != nil || restored.UserId != "0" ||
++		restored.UserToken != "token" || restored.UserSiYuanOneTimePayStatus != 1 {
++		t.Fatalf("persisted local identity cannot survive restart: %v", err)
++	}
++}
+diff --git a/kernel/model/unlock_cloud_account_test.go b/kernel/model/unlock_cloud_account_test.go
+new file mode 100644
+index 000000000..197fd3655
+--- /dev/null
++++ b/kernel/model/unlock_cloud_account_test.go
+@@ -0,0 +1,28 @@
++package model
++
++import (
++	"net/http"
++	"testing"
++
++	"github.com/siyuan-note/siyuan/kernel/conf"
++)
++
++func TestUnlockAccountSurvivesCloudAuthenticationFailure(t *testing.T) {
++	for _, provider := range []int{conf.ProviderS3, conf.ProviderWebDAV} {
++		setupCloudAccountAuthTest(t)
++		Conf.Sync.Provider = provider
++		user := &conf.User{UserId: "0", UserToken: "token", UserSiYuanOneTimePayStatus: 1}
++		Conf.SetUser(user)
++		called := false
++		mockCloudAuthResponse(t, func(request *http.Request) (*http.Response, error) {
++			called = true
++			return cloudAuthResponse(request, http.StatusUnauthorized, ""), nil
++		})
++		if _, err := GetCloudShorthands(1); err == nil || !called {
++			t.Fatal("cloud request must still report authentication failure")
++		}
++		if Conf.GetUser() != user || !IsPaidUser() || !checkSync(false, false, true) || Conf.UserData != "persisted-user" {
++			t.Fatalf("cloud authentication failure removed local unlock state for sync provider %d", provider)
++		}
++	}
++}
