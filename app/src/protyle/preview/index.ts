@@ -1,5 +1,5 @@
 import {isOnlyMeta, writeText} from "../util/compatibility";
-import {focusByRange} from "../util/selection";
+import {focusByRange} from "../util/selectionOffsets";
 import {openLink} from "../../editor/openLink";
 import {showMessage} from "../../dialog/message";
 import {previewDocImage} from "./image";
@@ -26,8 +26,8 @@ import {speechRender} from "../render/speechRender";
 import {avRender} from "../render/av/render";
 import {getPadding} from "../ui/initUI";
 import {hasTopClosestByAttribute} from "../util/hasClosest";
-import {addScriptSync} from "../util/addScript";
 import {prepareWechatCopy, prepareZhihuCopy} from "./platformCopy";
+import {renderWechatMath} from "./wechatMath";
 import {getHostCapabilities} from "../../util/hostCapabilities";
 import {destroyAutoDirection, setAutoDirection} from "../render/autoDirection";
 
@@ -161,7 +161,9 @@ export class Preview {
                         event.preventDefault();
                         return;
                     }
-                    previewDocImage((event.target as HTMLElement).getAttribute("src"), protyle.block.rootID);
+                    previewDocImage((event.target as HTMLElement).getAttribute("src"), protyle.block.rootID,
+                        target.getAttribute(Constants.CUSTOM_SY_LIVE_PHOTO) === "1" ?
+                            target.getAttribute(Constants.CUSTOM_SY_LIVE_PHOTO_VIDEO) || "" : "");
                     event.stopPropagation();
                     event.preventDefault();
                     break;
@@ -307,29 +309,9 @@ export class Preview {
     }
 
     private async copyToX(copyElement: HTMLElement, protyle: IProtyle, type?: string) {
-        // fix math render
         if (type === "mp-wechat") {
             this.link2online(copyElement);
-            copyElement.querySelectorAll(".katex-html .base").forEach((item: HTMLElement) => {
-                item.style.display = "initial";
-            });
-            copyElement.querySelectorAll("mjx-container > svg").forEach((item) => {
-                item.setAttribute("width", (parseInt(item.getAttribute("width")) * 8) + "px");
-            });
-            if (typeof window.MathJax === "undefined") {
-                window.MathJax = {
-                    svg: {
-                        fontCache: "none"
-                    },
-                };
-            }
-            await addScriptSync(`${Constants.PROTYLE_CDN}/js/mathjax/tex-svg-full.js`, "protyleMathJaxScript");
-            await window.MathJax.startup.promise;
-            copyElement.querySelectorAll('[data-subtype="math"]').forEach(mathElement => {
-                const node = window.MathJax.tex2svg(Lute.UnEscapeHTMLStr(mathElement.getAttribute("data-content")).trim(), {display: mathElement.tagName === "DIV"});
-                node.querySelector("mjx-assistive-mml").remove();
-                mathElement.innerHTML = node.outerHTML;
-            });
+            await renderWechatMath(copyElement);
             prepareWechatCopy(copyElement, this.previewElement);
         } else if (type === "zhihu") {
             this.link2online(copyElement);

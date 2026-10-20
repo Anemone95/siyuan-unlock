@@ -67,15 +67,15 @@ func refBacklinks(args map[string]any) (CallToolResult, error) {
 		sortMode = int(v)
 	}
 
-	_, backlinks, _, _, _ := model.GetBacklink2(id, keyword, "", sortMode, 0, model.Conf.Editor.BacklinkContainChildren)
+	_, backlinks, _, _, _ := model.GetBacklink2(id, keyword, "", sortMode, 0, model.Conf.Editor.Load().BacklinkContainChildren)
 	if len(backlinks) == 0 {
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: "no backlinks found"}}}, nil
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Backlinks (%d):\n\n", len(backlinks)))
+	fmt.Fprintf(&sb, "Backlinks (%d):\n\n", len(backlinks))
 	for _, p := range backlinks {
-		sb.WriteString(fmt.Sprintf("- [%s] %s (id: %s)\n", p.NodeType, p.HPath, p.ID))
+		fmt.Fprintf(&sb, "- [%s] %s (id: %s)\n", p.NodeType, p.HPath, p.ID)
 	}
 	return CallToolResult{Content: []ContentItem{{Type: "text", Text: sb.String()}}}, nil
 }
@@ -88,15 +88,15 @@ func refMentions(args map[string]any) (CallToolResult, error) {
 		sortMode = int(v)
 	}
 
-	_, _, mentions, _, _ := model.GetBacklink2(id, "", keyword, 0, sortMode, model.Conf.Editor.BacklinkContainChildren)
+	_, _, mentions, _, _ := model.GetBacklink2(id, "", keyword, 0, sortMode, model.Conf.Editor.Load().BacklinkContainChildren)
 	if len(mentions) == 0 {
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: "no mentions found"}}}, nil
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Mentions (%d):\n\n", len(mentions)))
+	fmt.Fprintf(&sb, "Mentions (%d):\n\n", len(mentions))
 	for _, p := range mentions {
-		sb.WriteString(fmt.Sprintf("- [%s] %s (id: %s)\n", p.NodeType, p.HPath, p.ID))
+		fmt.Fprintf(&sb, "- [%s] %s (id: %s)\n", p.NodeType, p.HPath, p.ID)
 	}
 	return CallToolResult{Content: []ContentItem{{Type: "text", Text: sb.String()}}}, nil
 }

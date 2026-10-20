@@ -1,4 +1,7 @@
+import {toggleMenu} from "../../menus/menuToggle";
+import {bindEditorFocusMemory} from "../util/editorFocusMemory";
 import {recordReplacementUndo} from "./replacementInput";
+import {expandAndroidWordSelection, isAndroidWordSelectionPending} from "../../mobile/util/wordSelection";
 import {bindBoundedBlockDragSelect} from "./boundedBlockDragSelect";
 import {bindEmbedToolbarVisibility} from "./embedToolbarVisibility";
 import {bindSpellcheckFocus} from "../util/spellcheckFocus";
@@ -10,6 +13,10 @@ import {repairHiddenTabSelection} from "../util/tabsSelection";
 import {isTabTextBoundary} from "./tabsBoundary";
 import {captureCompositionText} from "./compositionCaret";
 import {isCommittedTextInput} from "./compositionInput";
+import {bindIOSTouchCaret} from "./touchCaret";
+import {usesNativeTextMenu} from "./nativeTextMenu";
+import {bindListMarkerCaret} from "./listMarkerCaret";
+import {clearTouchBlockSelection} from "./touchBlockSelection";
 import {isDirectMathClick} from "../util/mathClick";
 import {
     beforePaste,
@@ -32,20 +39,18 @@ import {
 import {
     focusBlock,
     focusByOffset,
-    focusByRange,
     focusByWbr,
     focusSideBlock,
     getBlockRangeSelectElements,
     getBlockRanges,
     getEditorRange,
-    getSelectionOffset,
     getUndoFocusContext,
     setFirstNodeRange,
     setInsertWbrHTML,
-    setLastNodeRange,
 } from "../util/selection";
+import {focusByRange, getSelectionOffset, setLastNodeRange} from "../util/selectionOffsets";
 import {Constants} from "../../constants";
-import {mergeTableCellContents} from "../util/tableCellRich";
+import {getTableCellPlainText, mergeTableCellContents} from "../util/tableCellRich";
 import {resolveDocumentBlockElement} from "../util/outlineBlock";
 import {isMobile} from "../../util/functions";
 import {previewDocImage} from "../preview/image";
@@ -61,7 +66,7 @@ import {
     tagMenu,
     zoomOut
 } from "../../menus/protyle";
-import * as dayjs from "dayjs";
+import dayjs from "dayjs";
 import {dropEvent} from "../util/editorCommonEvent";
 import {beforeBlockquoteInput, input} from "./input";
 import {getMultilineInputText, isTextInputType} from "./multilineInput";
@@ -153,13 +158,14 @@ import {removeSearchMark} from "../toolbar/util";
 import {getTableCellTextStyleMenus} from "../toolbar/tableCell";
 import {isNestedListCrossBlockSelection, NESTED_LIST_PASTE_MARKER} from "../util/pasteSource";
 import {activeBlur} from "../../mobile/util/keyboardToolbar";
+import {canInput} from "../../mobile/util/mobileAppUtil";
+import {notifyMobileKeyboardChange} from "../../mobile/util/mobileKeyboardChange";
 import {commonClick} from "./commonClick";
-import {avClick, avContextmenu, updateAVName} from "../render/av/action";
+import {avClick, avContextmenu, switchAVView, updateAVName} from "../render/av/action";
 import {selectRow, stickyRow, updateHeader} from "../render/av/row";
 import {getAVSelectedItemIDs, getAVSelectedTableCells, updateAVRowSelect} from "../render/av/virtualScroll";
 import {autoFitAVColumns, setFreezeColumn, showAVColumnWidthMenu, showColMenu} from "../render/av/col";
 import {openViewMenu} from "../render/av/view";
-import {getAVCurrentViewID} from "../render/av/viewVisibility";
 import {checkFold} from "../../util/noRelyPCFunction";
 import {confirmBlockRef} from "../../util/checkBlockRef";
 import {
@@ -184,7 +190,7 @@ import {editAssetItem} from "../render/av/asset";
 import {hasViewFoldContext, sanitizeViewFoldHTML} from "../util/viewFold";
 import {img3115} from "../../boot/compatibleVersion";
 import {dragOverScroll, stopScrollAnimation} from "../../boot/globalEvent/dragover";
-import {globalClickHideMenu} from "../../boot/globalEvent/click";
+import {globalClickHideMenu} from "../../menus/menuClick";
 import {hideTooltip} from "../../dialog/tooltip";
 import {openGalleryItemMenu} from "../render/av/gallery/util";
 import {clearSelect} from "../util/clear";
@@ -241,6 +247,8 @@ import {LargeTableVirtualizer} from "./tableVirtualization";
 import {forEachPluginSubscriber} from "../../plugin/EventBusCore";
 import {areProtylePluginExtensionsEnabled} from "../runtimeCapabilities";
 import {syncRootAttributes} from "../util/syncRootAttributes";
+import {bindImageTitleEditor} from "../render/imageTitleEditor";
+import {bindImageResize, getImageResizeWidth} from "../render/imageResize";
 import {isDirectCalloutStructureClick} from "./calloutClick";
 import {
     BLOCK_SELECTION_CLASS,
@@ -409,9 +417,14 @@ export class WYSIWYG {
     private largeListVirtualizer?: LargeListVirtualizer;
     private largeTableVirtualizer?: LargeTableVirtualizer;
     private disposeSpellcheckFocus?: () => void;
+    private disposeFocusMemory?: () => void;
     private disposeEmbedToolbarVisibility?: () => void;
     private disposeHeadingFoldIndicators?: () => void;
     private disposeBoundedBlockDragSelect?: () => void;
+    private disposeTouchCaret?: () => void;
+    private disposeListMarkerCaret?: () => void;
+    private imageTitleEditor: ReturnType<typeof bindImageTitleEditor>;
+    private disposeImageResize?: () => void;
 
     private scheduleInput(callback: () => void | Promise<void>, delay = 0, replace = true) {
         if (replace && this.inputTimeout) {
@@ -442,6 +455,7 @@ export class WYSIWYG {
     }
 
     public async flushPendingInput() {
+        this.imageTitleEditor?.flush();
         this.persistComposition?.();
         // 输入处理可能等待块引用查询，交接编辑器前也需等待已经开始执行的任务。
         while (this.pendingInputTimeouts.size || this.runningInputTasks.size) {
@@ -529,17 +543,23 @@ export class WYSIWYG {
         this.protyle = protyle;
         this.element = document.createElement("div");
         this.element.className = "protyle-wysiwyg";
+        this.disposeFocusMemory = bindEditorFocusMemory(this.element);
         this.element.setAttribute("spellcheck", window.siyuan.config.editor.spellcheck.toString());
         // Android 和 iPhone 的原生编辑限于正文节点，避免输入法修改列表等结构容器。
         this.element.setAttribute("contenteditable", (isIPhone() || isAndroid()) ? "false" : "true");
         if (window.siyuan.config.editor.displayBookmarkIcon) {
             this.element.classList.add("protyle-wysiwyg--attr");
         }
-        if (!isMobile()) {
+        if (!isMobile() || !protyle.lite) {
             this.tableControl = new TableControl(protyle, this.element);
         }
         this.bindCommonEvent(protyle);
+        this.imageTitleEditor = bindImageTitleEditor(protyle, this.element);
+        this.disposeImageResize = bindImageResize(this.element);
         this.bindEvent(protyle);
+        this.disposeListMarkerCaret = bindListMarkerCaret(this.element, () => !protyle.disabled &&
+            !protyle.toolbar.isMultiSelectMode() && !window.siyuan.touchDragActive &&
+            !getBlockSelectionModeElement(this.element));
         this.disposeEmbedToolbarVisibility = bindEmbedToolbarVisibility(this.element);
         /// #if BROWSER
         if (!isMobile() && !isPhablet() && navigator.userAgent.includes("Chrome/")) {
@@ -553,6 +573,11 @@ export class WYSIWYG {
         }
         if (isAndroid() || isIOSDevice()) {
             this.disposeBoundedBlockDragSelect = bindBoundedBlockDragSelect(protyle, this.element);
+        }
+        if (isIOSDevice()) {
+            this.disposeTouchCaret = bindIOSTouchCaret(this.element, () => !protyle.disabled &&
+                !protyle.toolbar.isMultiSelectMode() && !window.siyuan.touchDragActive &&
+                !getBlockSelectionModeElement(this.element));
         }
         /// #if !MOBILE
         bindTouchNavigation(this.element, (target, point) => {
@@ -580,12 +605,17 @@ export class WYSIWYG {
     }
 
     public destroy() {
+        this.disposeFocusMemory?.();
+        this.imageTitleEditor?.destroy();
+        this.disposeImageResize?.();
         this.persistComposition?.();
         this.persistComposition = undefined;
         this.disposeHeadingFoldIndicators?.();
         this.disposeEmbedToolbarVisibility?.();
         this.disposeSpellcheckFocus?.();
         this.disposeBoundedBlockDragSelect?.();
+        this.disposeTouchCaret?.();
+        this.disposeListMarkerCaret?.();
         this.largeListVirtualizer?.destroy();
         this.largeTableVirtualizer?.destroy();
     }
@@ -1162,7 +1192,7 @@ export class WYSIWYG {
             textPlain = textPlain || protyle.lute.BlockDOM2StdMd(externalBlockDOM).trimEnd();
             textPlain = removeZWJ(nbsp2space(textPlain)) // Replace non-breaking spaces with normal spaces when copying https://github.com/siyuan-note/siyuan/issues/9382
                 // Remove ZWSP when copying inline elements https://github.com/siyuan-note/siyuan/issues/13882
-                .replace(new RegExp(Constants.ZWSP, "g"), "");
+                .replaceAll(Constants.ZWSP, "");
             let clipboardText = textPlain;
 
             if (!isInCodeBlock) {
@@ -1221,6 +1251,11 @@ export class WYSIWYG {
         });
 
         this.element.addEventListener("mousedown", (event: MouseEvent) => {
+            if (this.tableControl?.hasTouchSelection() && (event.target as Element).closest("td, th")) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
             this.mouseDownTarget = event.target;
             // 常规划选时排除属性占位，三击时恢复以保留浏览器的整段选择行为
             this.element.classList.toggle("protyle-wysiwyg--select-attr", event.button === 0 && event.detail > 2);
@@ -1426,7 +1461,7 @@ export class WYSIWYG {
                 if (hasClosestByAttribute(target, "data-type", "av-gallery-more")) {
                     clearSelect(["img", "row", "cell"], protyle.wysiwyg.element);
                 } else if (!hasClosestByClassName(target, "av__firstcol") && !avDragFillElement) {
-                    clearSelect(["img", "av"], protyle.wysiwyg.element);
+                    clearSelect(target.closest(".protyle-image-resize") ? ["av"] : ["img", "av"], protyle.wysiwyg.element);
                 }
             }
 
@@ -1955,13 +1990,21 @@ export class WYSIWYG {
                 };
                 return false;
             }
-            // 图片、iframe、video、挂件缩放
+            // 图片、iframe、video、挂件和 Mermaid 缩放。
             if (!protyle.disabled && target.classList.contains("protyle-action__drag")) {
                 if (!nodeElement) {
                     return;
                 }
+                const html = nodeElement.outerHTML;
+                const isIFrame = ["NodeIFrame", "NodeWidget"].includes(nodeElement.dataset.type);
+                const isMermaid = nodeElement.dataset.subtype === "mermaid";
                 let isCenter = true;
-                if ("NodeVideo" === nodeElement.dataset.type) {
+                if (isMermaid) {
+                    if (nodeElement.parentElement.classList.contains("sb")) {
+                        return;
+                    }
+                    isCenter = nodeElement.style.textAlign === "center";
+                } else if ("NodeVideo" === nodeElement.dataset.type) {
                     nodeElement.classList.add("iframe--drag");
                     if (["left", "right", ""].includes(nodeElement.style.textAlign)) {
                         isCenter = false;
@@ -1971,42 +2014,89 @@ export class WYSIWYG {
                     if (!nodeElement.style.margin) {
                         isCenter = false;
                     }
-                } else if (target.parentElement.parentElement.getAttribute("data-type") === "img") {
-                    target.parentElement.parentElement.classList.add("img--drag");
                 }
 
-                const html = nodeElement.outerHTML;
                 const x = event.clientX;
-                const dragElement = target.previousElementSibling as HTMLElement;
-                const dragWidth = dragElement.clientWidth;
+                const imageFrame = target.closest(".protyle-image-resize");
+                const dragElement = isMermaid ? nodeElement :
+                    isIFrame ? nodeElement.querySelector<HTMLElement>(":scope > .iframe-content > iframe") :
+                    imageFrame ? imageFrame.parentElement.querySelector<HTMLImageElement>(":scope > img") :
+                        target.previousElementSibling as HTMLElement;
+                if (!dragElement) {
+                    nodeElement.classList.remove("iframe--drag");
+                    return;
+                }
+                const mermaidStyle = isMermaid ? getComputedStyle(nodeElement) : null;
+                const dragWidth = isMermaid ? parseFloat(mermaidStyle.width) : dragElement.clientWidth;
                 const dragHeight = dragElement.clientHeight;
+                const resizeAxis = isMermaid ? "width" : isIFrame || dragElement.tagName === "IMG" ?
+                    target.dataset.resizeAxis || (isIFrame ? "both" : "width") : "both";
+                if (target.classList.contains("protyle-block-resize")) {
+                    target.classList.add("touch-resize-active");
+                }
 
                 const imgElement = dragElement.parentElement.parentElement;
+                const imageRect = dragElement.getBoundingClientRect();
+                const imageScale = imageRect.width / dragWidth || 1;
+                const imageMultiple = !imgElement.style.minWidth && nodeElement.style.textAlign !== "center" ? 1 : 2;
+                const mindmapNode = dragElement.tagName === "IMG" ?
+                    nodeElement.closest<HTMLElement>(".mindmap-view__node--editing") : null;
+                const mindmapStyle = mindmapNode ? getComputedStyle(mindmapNode) : null;
+                // 节点按内容撑开，当前编辑器宽度不能作为放大图片的上限。
+                const imageMaxWidth = Math.max(17, mindmapNode && Number.isFinite(parseFloat(mindmapStyle.maxWidth)) ?
+                    parseFloat(mindmapStyle.maxWidth) - parseFloat(mindmapStyle.paddingRight) - parseFloat(mindmapStyle.borderRightWidth) -
+                    (imageRect.left - mindmapNode.getBoundingClientRect().left) / imageScale :
+                    (mostRight - imageRect.left - (imageMultiple === 2 ? imageRect.width / 2 : 0)) * imageMultiple / imageScale);
+                const mermaidInsets = mermaidStyle?.boxSizing === "content-box" ?
+                    parseFloat(mermaidStyle.paddingLeft) + parseFloat(mermaidStyle.paddingRight) +
+                    parseFloat(mermaidStyle.borderLeftWidth) + parseFloat(mermaidStyle.borderRightWidth) : 0;
+                const mermaidScale = isMermaid ? imageRect.width / (dragWidth + mermaidInsets) || 1 : 1;
+                const mermaidParentStyle = isMermaid ? getComputedStyle(nodeElement.parentElement) : null;
+                const mermaidMaxWidth = isMermaid ? Math.max(17, nodeElement.parentElement.clientWidth -
+                    parseFloat(mermaidParentStyle.paddingLeft) - parseFloat(mermaidParentStyle.paddingRight) -
+                    mermaidInsets) : 0;
                 if (dragElement.tagName === "IMG") {
+                    imgElement.classList.add("img--drag");
                     img3115(imgElement);
                 }
-                // 3.4.1 以前历史数据兼容
-                if (dragElement.tagName === "IFRAME") {
-                    dragElement.style.height = "";
-                    dragElement.style.width = "";
-                }
-                documentSelf.onmousemove = (moveEvent: MouseEvent) => {
-                    if (dragElement.tagName === "IMG") {
-                        dragElement.style.height = "";
+                const resizeEvents = new AbortController();
+                const resizeMove = (moveEvent: MouseEvent) => {
+                    if (isMermaid) {
+                        nodeElement.style.width = getImageResizeWidth(dragWidth, dragHeight,
+                            (moveEvent.clientX - x) / mermaidScale, 0, "width", isCenter ? 2 : 1, mermaidMaxWidth) + "px";
+                        nodeElement.style.flex = "none";
+                        return;
                     }
-                    if (moveEvent.clientX > x - dragWidth + 8 && moveEvent.clientX < mostRight) {
-                        const multiple = ((dragElement.tagName === "IMG" && !imgElement.style.minWidth && nodeElement.style.textAlign !== "center") || !isCenter) ? 1 : 2;
-                        if (dragElement.tagName === "IMG") {
-                            dragElement.parentElement.style.width = Math.max(17, dragWidth + (moveEvent.clientX - x) * multiple) + "px";
-                        } else if (dragElement.tagName === "IFRAME") {
+                    if (dragElement.tagName === "IMG") {
+                        const image = dragElement as HTMLImageElement;
+                        const height = image.naturalWidth && image.naturalHeight ?
+                            dragWidth * image.naturalHeight / image.naturalWidth : dragHeight;
+                        const width = getImageResizeWidth(dragWidth, height,
+                            (moveEvent.clientX - x) / imageScale, (moveEvent.clientY - y) / imageScale,
+                            resizeAxis, imageMultiple, imageMaxWidth);
+                        dragElement.style.width = "";
+                        dragElement.style.height = "";
+                        dragElement.removeAttribute("width");
+                        dragElement.removeAttribute("height");
+                        dragElement.parentElement.style.width = width + "px";
+                        return;
+                    }
+                    if (resizeAxis !== "height" && moveEvent.clientX > x - dragWidth + 8 && moveEvent.clientX < mostRight) {
+                        const multiple = isCenter ? 2 : 1;
+                        if (dragElement.tagName === "IFRAME") {
+                            // 只清理当前轴的历史尺寸，另一轴继续沿用原数据。
+                            dragElement.style.width = "";
+                            dragElement.removeAttribute("width");
                             nodeElement.style.width = Math.max(17, dragWidth + (moveEvent.clientX - x) * multiple) + "px";
                         } else {
                             dragElement.style.width = Math.max(17, dragWidth + (moveEvent.clientX - x) * multiple) + "px";
                         }
                     }
-                    if (dragElement.tagName !== "IMG") {
+                    if (resizeAxis !== "width") {
                         if (moveEvent.clientY > y - dragHeight + 8 && moveEvent.clientY < mostBottom) {
                             if (dragElement.tagName === "IFRAME") {
+                                dragElement.style.height = "";
+                                dragElement.removeAttribute("height");
                                 nodeElement.style.height = (dragHeight + (moveEvent.clientY - y)) + "px";
                             } else {
                                 dragElement.style.height = (dragHeight + (moveEvent.clientY - y)) + "px";
@@ -2015,19 +2105,29 @@ export class WYSIWYG {
                     }
                 };
 
+                // 脑图编辑器会隔离冒泡事件；捕获阶段继续缩放，保留触摸桥接直接调用的接口。
+                documentSelf.addEventListener("mousemove", resizeMove, {capture: true, signal: resizeEvents.signal});
+                documentSelf.onmousemove = (moveEvent: MouseEvent) => {
+                    if (moveEvent.eventPhase === Event.NONE) {
+                        resizeMove(moveEvent);
+                    }
+                };
                 documentSelf.onmouseup = () => {
+                    resizeEvents.abort();
                     documentSelf.onmousemove = null;
                     documentSelf.onmouseup = null;
                     documentSelf.ondragstart = null;
                     documentSelf.onselectstart = null;
                     documentSelf.onselect = null;
+                    nodeElement.classList.remove("iframe--drag");
+                    target.classList.remove("touch-resize-active");
+                    imgElement.classList.remove("img--drag");
                     if (target.classList.contains("protyle-action__drag") && nodeElement) {
                         focusBlock(nodeElement);
                         updateTransaction(protyle, nodeElement, html);
                     }
-                    nodeElement.classList.remove("iframe--drag");
-                    target.parentElement.parentElement.classList.remove("img--drag");
                 };
+                documentSelf.addEventListener("mouseup", documentSelf.onmouseup, {capture: true, signal: resizeEvents.signal});
                 return;
             }
             // table cell select
@@ -2128,7 +2228,7 @@ export class WYSIWYG {
                     setTimeout(() => {
                         if (getSelection().rangeCount > 0) {
                             const range = getSelection().getRangeAt(0);
-                            if (stripSemanticMarkersFromRangeText(range).replace(new RegExp(Constants.ZWSP, "g"), "") !== "") {
+                            if (stripSemanticMarkersFromRangeText(range).replaceAll(Constants.ZWSP, "") !== "") {
                                 protyle.toolbar.render(protyle, range, {
                                     x: mouseUpEvent.clientX,
                                     y: mouseUpEvent.clientY,
@@ -2276,7 +2376,10 @@ export class WYSIWYG {
                 });
             };
             this.element.classList.add("fn__pointer-none");
-            hideElements(["gutter"], protyle);
+            // 单元格点击保留表格块标，进入跨单元格拖选后再隐藏。
+            if (!targetCellElement || startsFromPadding) {
+                hideElements(["gutter"], protyle);
+            }
             // 容器类元素判断（划选时 elementFromPoint 命中它们的边缘/空白需继续探测子块）
             const isContainer = (el: Element) => el.classList.contains("protyle-wysiwyg") || el.classList.contains("list") ||
                 el.classList.contains("li") || el.classList.contains("sb") || el.classList.contains("callout") ||
@@ -2326,6 +2429,7 @@ export class WYSIWYG {
                         }
                         if (moveTarget && (moveTarget.tagName === "TH" || moveTarget.tagName === "TD") &&
                             (!moveCellElement || moveCellElement !== moveTarget)) {
+                            hideElements(["gutter"], protyle);
                             // @ts-ignore
                             tableBlockElement.firstElementChild.style.webkitUserModify = "read-only";
                             const tableElement = tableBlockElement.querySelector("table");
@@ -2908,7 +3012,7 @@ export class WYSIWYG {
                                 if (tableBlockElement) {
                                     let textPlain = "";
                                     selectedCellElements.forEach((item, index) => {
-                                        textPlain += item.textContent.trim() + "\t";
+                                        textPlain += getTableCellPlainText(item).trim() + "\t";
                                         if (!item.nextElementSibling || !selectedCellElements[index + 1] ||
                                             item.nextElementSibling !== selectedCellElements[index + 1]) {
                                             textPlain = textPlain.slice(0, -1) + "\n";
@@ -3589,7 +3693,7 @@ export class WYSIWYG {
                 }
             }
             textPlain = removeZWJ(nbsp2space(textPlain)) // Replace non-breaking spaces with normal spaces when copying https://github.com/siyuan-note/siyuan/issues/9382
-                .replace(new RegExp(Constants.ZWSP, "g"), "");
+                .replaceAll(Constants.ZWSP, "");
             if (!cutClipboardWritten) {
                 event.clipboardData.setData("text/plain", textPlain);
             }
@@ -3665,12 +3769,28 @@ export class WYSIWYG {
                 return;
             }
             event.stopPropagation();
+            const target = event.detail.target || event.target as HTMLElement;
+            const selectElements = protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select");
+            /// #if MOBILE
+            if (isIOSDevice() && selectElements.length === 0 && !isInEmbedBlock(target) &&
+                usesNativeTextMenu(target, this.element)) {
+                // 不在系统选词菜单上叠加正文浮层，保留原生选区和选择手柄。
+                protyle.toolbar.subElement.classList.add("fn__none");
+                return;
+            }
+            if (event.isTrusted && !protyle.disabled && window.JSAndroid?.prepareWordSelection &&
+                selectElements.length === 0 && target.closest('[contenteditable="true"]') && !isInEmbedBlock(target)) {
+                const blockElement = hasClosestBlock(target);
+                if (blockElement && expandAndroidWordSelection(blockElement, true)) {
+                    return;
+                }
+            }
+            /// #endif
             /// #if BROWSER
             event.preventDefault();
             /// #endif
             const x = event.clientX || event.detail.x;
             const y = event.clientY || event.detail.y;
-            const selectElements = protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select");
             if (selectElements.length > 1 ||
                 getBlockSelectionModeElement(protyle.wysiwyg.element) && selectElements.length > 0) {
                 // 多选块
@@ -3684,7 +3804,6 @@ export class WYSIWYG {
                 window.siyuan.menus.menu.popup({x, y});
                 return;
             }
-            const target = event.detail.target || event.target as HTMLElement;
             const embedElement = isInEmbedBlock(target);
             if (embedElement) {
                 if (!protyle.gutter) {
@@ -3784,18 +3903,7 @@ export class WYSIWYG {
                 if (avTabHeaderElement.classList.contains("item--focus")) {
                     openViewMenu({protyle, blockElement: nodeElement, element: avTabHeaderElement});
                 } else {
-                    clearSelect(["row", "galleryItem"], nodeElement);
-                    transaction(protyle, [{
-                        action: "setAttrViewBlockView",
-                        blockID: nodeElement.getAttribute("data-node-id"),
-                        id: avTabHeaderElement.dataset.id,
-                        avID: nodeElement.getAttribute("data-av-id"),
-                    }], [{
-                        action: "setAttrViewBlockView",
-                        blockID: nodeElement.getAttribute("data-node-id"),
-                        id: getAVCurrentViewID(nodeElement),
-                        avID: nodeElement.getAttribute("data-av-id"),
-                    }]);
+                    switchAVView(protyle, nodeElement, avTabHeaderElement);
                     window.siyuan.menus.menu.remove();
                     openViewMenu({
                         protyle,
@@ -3865,7 +3973,7 @@ export class WYSIWYG {
             }
             if (!isNotEditBlock(nodeElement) && !nodeElement.classList.contains("protyle-wysiwyg--select") &&
                 !hasClosestByClassName(target, "protyle-action") && // https://github.com/siyuan-note/siyuan/issues/8983
-                (isMobile() || event.detail.target || (beforeContextmenuRange && nodeElement.contains(beforeContextmenuRange.startContainer)))
+                (isMobile() || event.detail.target || (beforeContextmenuRange && beforeContextmenuRange.intersectsNode(nodeElement)))
             ) {
                 if ((!isMobile() || protyle.toolbar?.element.classList.contains("fn__none")) && !nodeElement.classList.contains("av")) {
                     const spellcheckContext = await requestSpellcheckContext(x, y);
@@ -3876,7 +3984,11 @@ export class WYSIWYG {
                         protyle.wysiwyg.flushPendingInput();
                         setInsertWbrHTML(nodeElement, protyle.toolbar.range, protyle);
                     }
-                    contentMenu(protyle, nodeElement);
+                    const wordRange = expandAndroidWordSelection(nodeElement);
+                    if (wordRange) {
+                        protyle.toolbar.range = wordRange;
+                    }
+                    contentMenu(protyle, hasClosestBlock(protyle.toolbar.range.startContainer) || nodeElement);
                     addSpellcheckMenuItems(spellcheckContext);
                     /// #if !MOBILE
                     window.siyuan.menus.menu.popup({x, y: y + 13, h: 26});
@@ -3905,7 +4017,8 @@ export class WYSIWYG {
             }
         });
 
-        this.element.addEventListener("pointerdown", () => {
+        this.element.addEventListener("pointerdown", (event: PointerEvent) => {
+            clearTouchBlockSelection(protyle, event);
             if (getSelection().rangeCount > 0) {
                 beforeContextmenuRange = getSelection().getRangeAt(0);
             } else {
@@ -4144,6 +4257,7 @@ export class WYSIWYG {
         let compositionRange: ({ range: Range } | { cell: HTMLElement; offset: number }) & {
             hasRetainedText?: (range: Range) => boolean;
         };
+        let compositionInputText = "";
         let crossBlockComposition: ICrossBlockComposition;
         this.persistComposition = () => {
             if (!isComposition || crossBlockComposition || !compositionSnapshot?.html ||
@@ -4185,6 +4299,7 @@ export class WYSIWYG {
             }
             this.persistComposition?.();
             isComposition = true;
+            compositionInputText = "";
             recoveredComposition = false;
             compositionSnapshot = undefined;
             crossBlockComposition = undefined;
@@ -4277,9 +4392,15 @@ export class WYSIWYG {
             if (!blockElement) {
                 return;
             }
-            if ("" !== event.data) {
+            // iOS 的空结束事件仍可能保留已提交的括号，只在确认文本保留后处理最近的组合输入。
+            const refBracketText = event.data || (compositionRange?.hasRetainedText?.(range) &&
+                /^[【】]{1,2}$/.test(compositionInputText) ? compositionInputText : "");
+            if ("" !== event.data || refBracketText) {
                 compositionRange = undefined;
                 this.escapeInline(protyle, range, event);
+                if (protyle.hint.handleRefBracketInput(protyle, range, refBracketText)) {
+                    return;
+                }
                 // 小鹤音形 ;k 不能使用 setTimeout;
                 // wysiwyg.element contenteditable 为 false 时，连拼 needRender 必须为 false
                 // hr 渲染；任务列表、粗体、数学公示结尾 needRender 必须为 true
@@ -4326,6 +4447,11 @@ export class WYSIWYG {
             if (!event.isComposing && ["deleteContentBackward", "deleteContentForward"].includes(event.inputType) &&
                 !getBlockSelectionModeElement(this.element) && !this.element.querySelector(".protyle-wysiwyg--select") &&
                 isTabTextBoundary(getEditorRange(this.element), event.inputType === "deleteContentBackward")) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            if (!isComposition && protyle.hint.handleRefBracketBeforeInput(protyle, event)) {
                 event.preventDefault();
                 event.stopPropagation();
                 return;
@@ -4477,6 +4603,9 @@ export class WYSIWYG {
             }
             // 输入法可能暂时清空选区或把光标放到编辑器根节点，候选更新不能触发选区修复。
             if (event.isComposing || (isComposition && !isCommittedTextInput(event))) {
+                if (event.data !== null) {
+                    compositionInputText = event.data;
+                }
                 return;
             }
             const range = getEditorRange(this.element);
@@ -4509,6 +4638,10 @@ export class WYSIWYG {
                 return;
             }
             this.escapeInline(protyle, range, event);
+            if (protyle.hint.handleRefBracketInput(protyle, range, event.data)) {
+                event.stopPropagation();
+                return;
+            }
 
             // 原生输入结束后立即恢复各段折行，避免延迟解析前绘制出临时的整段换行。
             normalizeInlineElementBoundaries(this.element);
@@ -4586,7 +4719,8 @@ export class WYSIWYG {
                 return;
             }
 
-            if ((event.shiftKey || isOnlyMeta(event)) && !event.isComposing && range.toString() !== "") {
+            if ((event.shiftKey || isOnlyMeta(event)) && !event.isComposing && range.toString() !== "" &&
+                window.siyuan.menus.menu.element.classList.contains("fn__none")) {
                 // 工具栏
                 protyle.toolbar.render(protyle, range);
                 countSelectWord(range, protyle);
@@ -4648,6 +4782,13 @@ export class WYSIWYG {
                 return;
             }
             const target = event.target as HTMLElement;
+            /// #if MOBILE
+            if (isIOSDevice() && usesNativeTextMenu(target, this.element)) {
+                // 双击选词与长按共用系统文字菜单，避免正文浮层覆盖后续触摸位置。
+                protyle.toolbar.subElement.classList.add("fn__none");
+                return;
+            }
+            /// #endif
             if (!protyle.disabled && target.classList.contains("av__widthdrag")) {
                 const blockElement = hasClosestBlock(target) as HTMLElement;
                 const columnID = target.parentElement?.getAttribute("data-col-id");
@@ -4659,7 +4800,7 @@ export class WYSIWYG {
                 return;
             }
             // 双击超级块拖拽手柄，均分所有列宽
-            if (target.classList.contains("sb__resize")) {
+            if (!protyle.disabled && target.classList.contains("sb__resize")) {
                 const doOperations: IOperation[] = [];
                 const undoOperations: IOperation[] = [];
                 Array.from(target.parentElement.children).forEach((item: HTMLElement) => {
@@ -4687,7 +4828,9 @@ export class WYSIWYG {
             }
             if (target.tagName === "IMG" && !target.classList.contains("emoji") &&
                 !target.closest('[data-subtype="plantuml"]')) {
-                previewDocImage((event.target as HTMLElement).getAttribute("src"), protyle.block.rootID);
+                previewDocImage((event.target as HTMLElement).getAttribute("src"), protyle.block.rootID,
+                    target.getAttribute(Constants.CUSTOM_SY_LIVE_PHOTO) === "1" ?
+                        target.getAttribute(Constants.CUSTOM_SY_LIVE_PHOTO_VIDEO) || "" : "");
                 return;
             }
             // https://github.com/siyuan-note/siyuan/issues/12691
@@ -4706,7 +4849,10 @@ export class WYSIWYG {
                 target.closest("[contenteditable]")?.getAttribute("contenteditable") !== "false" &&
                 selection?.rangeCount && !selection.isCollapsed && selection.toString() &&
                 nodeElement.contains(selection.anchorNode) && nodeElement.contains(selection.focusNode)) {
-                protyle.toolbar.range = selection.getRangeAt(0);
+                if (isAndroidWordSelectionPending(nodeElement)) {
+                    return;
+                }
+                protyle.toolbar.range = expandAndroidWordSelection(nodeElement) || selection.getRangeAt(0);
                 contentMenu(protyle, nodeElement);
             }
             /// #endif
@@ -5154,23 +5300,29 @@ export class WYSIWYG {
 
             const menuElement = hasClosestByClassName(event.target, "protyle-action__menu");
             if (menuElement) {
-                if (!protyle.gutter) {
-                    event.stopPropagation();
-                    event.preventDefault();
-                    return;
-                }
-                protyle.gutter.renderMenu(protyle, menuElement.parentElement.parentElement);
-                /// #if MOBILE
-                window.siyuan.menus.menu.fullscreen();
-                /// #else
-                const rect = menuElement.getBoundingClientRect();
-                window.siyuan.menus.menu.popup({
-                    x: rect.left,
-                    y: rect.top,
-                    isLeft: true
+                toggleMenu({
+                    target: menuElement,
+                    build: (_menu, session) => {
+                        if (!protyle.gutter) {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            return;
+                        }
+                        protyle.gutter.renderMenu(protyle, menuElement.parentElement.parentElement);
+                        /// #if MOBILE
+                        session.show(() => window.siyuan.menus.menu.fullscreen());
+                        /// #else
+                        const rect = menuElement.getBoundingClientRect();
+                        session.show(() => window.siyuan.menus.menu.popup({
+                            x: rect.left,
+                            y: rect.top,
+                            isLeft: true
+                        }));
+                        /// #endif
+
+                    },
                 });
-                /// #endif
-                event.stopPropagation();
+            event.stopPropagation();
                 event.preventDefault();
                 return;
             }
@@ -5278,6 +5430,11 @@ export class WYSIWYG {
                         range.setStart(nextSibling, 0);
                     }
                     range.collapse(true);
+                    if (isMobile() && !protyle.disabled && canInput(nextSibling.nodeType === 3 ?
+                        nextSibling.parentElement : nextSibling as HTMLElement)) {
+                        // 恢复图片后的光标前隐藏普通底栏，避免底栏随软键盘弹起而上移。
+                        notifyMobileKeyboardChange(true);
+                    }
                     focusByRange(range);
                     // 需等待 range 更新再次进行渲染
                     if (protyle.options.render.breadcrumb) {
@@ -5423,10 +5580,28 @@ export class WYSIWYG {
                 }
                 // https://github.com/siyuan-note/siyuan/issues/14481
                 const inlineMathElement = hasClosestByAttribute(newRange.startContainer, "data-type", "inline-math");
-                if (inlineMathElement) {
+                if (newRange.collapsed && inlineMathElement) {
                     newRange.setEndAfter(inlineMathElement);
                     newRange.collapse(false);
                     focusByRange(newRange);
+                } else if (!newRange.collapsed) {
+                    // 划选停在公式内部时补齐边界，保留完整公式及原有选区方向。
+                    const endMathElement = hasClosestByAttribute(newRange.endContainer, "data-type", "inline-math");
+                    if (inlineMathElement || endMathElement) {
+                        const selection = getSelection();
+                        const backward = selection.anchorNode === newRange.endContainer &&
+                            selection.anchorOffset === newRange.endOffset;
+                        if (inlineMathElement) {
+                            newRange.setStartBefore(inlineMathElement);
+                        }
+                        if (endMathElement) {
+                            newRange.setEndAfter(endMathElement);
+                        }
+                        selection.setBaseAndExtent(backward ? newRange.endContainer : newRange.startContainer,
+                            backward ? newRange.endOffset : newRange.startOffset,
+                            backward ? newRange.startContainer : newRange.endContainer,
+                            backward ? newRange.startOffset : newRange.endOffset);
+                    }
                 }
                 const tripleClickBlockElement = event.detail > 2 && hasClosestBlock(event.target);
                 if (tripleClickBlockElement &&
@@ -5439,7 +5614,7 @@ export class WYSIWYG {
                     focusByRange(newRange);
                 }
                 /// #if !MOBILE
-                if (stripSemanticMarkersFromRangeText(newRange).replace(new RegExp(Constants.ZWSP, "g"), "") !== "") {
+                if (stripSemanticMarkersFromRangeText(newRange).replaceAll(Constants.ZWSP, "") !== "") {
                     const paintedRange = formatPainter.paint(protyle, newRange);
                     if (paintedRange) {
                         newRange = paintedRange;

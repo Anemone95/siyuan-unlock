@@ -86,7 +86,7 @@ var fullTextSearchAssetContent = contractHandler(apicontract.FullTextSearchAsset
 	searchPage, searchPageSize := page, pageSize
 	if isReadOnlyRole {
 		searchPage = 1
-		searchPageSize = model.Conf.Search.Limit
+		searchPageSize = model.Conf.Search.Load().Limit
 	}
 	assetContents, matchedAssetCount, pageCount, err := model.FullTextSearchAssetContent(query, types, method, orderBy, searchPage, searchPageSize)
 	if err != nil {
@@ -141,7 +141,7 @@ var findReplace = contractHandler(apicontract.FindReplace, func(c *gin.Context, 
 })
 
 var searchAsset = contractHandler(apicontract.SearchAssetByName, func(c *gin.Context, request apicontract.SearchAssetRequest) apicontract.Response[[]*apicontract.SearchAsset] {
-	page, pageSize := 1, model.Conf.Search.Limit
+	page, pageSize := 1, model.Conf.Search.Load().Limit
 	if request.Page != nil {
 		page = *request.Page
 	}
@@ -152,7 +152,7 @@ var searchAsset = contractHandler(apicontract.SearchAssetByName, func(c *gin.Con
 	if request.Match != nil {
 		match = &model.AssetSearchMatch{Field: request.Match.Field, Mode: request.Match.Mode, Value: request.Match.Value}
 	}
-	assets, err := model.SearchAssetsByNamePage(request.K, request.Exts, match, page, pageSize)
+	assets, err := model.SearchAssetsByNamePage(request.K, request.Exts, match, page, pageSize, request.IncludeMetadata)
 	if err != nil {
 		return apicontract.Failure[[]*apicontract.SearchAsset](-1, err.Error())
 	}
@@ -311,7 +311,16 @@ var searchRefBlock = contractHandler(apicontract.SearchRefBlock, func(c *gin.Con
 	// 加密笔记本内的块引搜索走 InBox 版（只搜该 box 自己的加密 db，阻止跨加密边界引用）
 	var blocks []*model.Block
 	var newDoc bool
-	if notebook != "" && model.IsEncryptedBox(notebook) {
+	if params.ExactDocTitle {
+		boxID := ""
+		if notebook != "" && model.IsEncryptedBox(notebook) {
+			boxID = notebook
+		}
+		blocks, newDoc, err = model.SearchExactRefDocTitle(id, rootID, keyword, boxID)
+		if err != nil {
+			return apicontract.SearchRefBlock.FailureWithData(-1, err.Error(), echo)
+		}
+	} else if notebook != "" && model.IsEncryptedBox(notebook) {
 		blocks, newDoc = model.SearchRefBlockInBox(id, rootID, keyword, beforeLen, isSquareBrackets, isDatabase, notebook)
 	} else {
 		blocks, newDoc = model.SearchRefBlock(id, rootID, keyword, beforeLen, isSquareBrackets, isDatabase)
@@ -361,9 +370,41 @@ var fullTextSearchBlock = contractHandler(apicontract.FullTextSearchBlock, func(
 		if err := holdEncryptedBoxRequest(c, notebook); err != nil {
 			return apicontract.Failure[*apicontract.FullTextSearchBlockData](-1, err.Error())
 		}
-		blocks, matchedBlockCount, matchedRootCount, pageCount, docMode = model.FullTextSearchBlockInBoxWithHPathContext(c.Request.Context(), query, boxes, paths, types, subTypes, method, orderBy, groupBy, page, pageSize, notebook, searchHPath, excludeBoxIDs, excludeDocIDs)
+		blocks, matchedBlockCount, matchedRootCount, pageCount, docMode = model.FullTextSearchBlock(model.BlockSearchOptions{
+			Context:       c.Request.Context(),
+			Query:         query,
+			Boxes:         boxes,
+			Paths:         paths,
+			Types:         types,
+			SubTypes:      subTypes,
+			Method:        method,
+			OrderBy:       orderBy,
+			GroupBy:       groupBy,
+			Page:          page,
+			PageSize:      pageSize,
+			BoxID:         notebook,
+			SearchHPath:   new(searchHPath),
+			ExcludeBoxIDs: excludeBoxIDs,
+			ExcludeDocIDs: excludeDocIDs,
+		})
 	} else {
-		blocks, matchedBlockCount, matchedRootCount, pageCount, docMode = model.FullTextSearchBlockInBoxWithHPathContext(c.Request.Context(), query, boxes, paths, types, subTypes, method, orderBy, groupBy, page, pageSize, "", searchHPath, excludeBoxIDs, excludeDocIDs)
+		blocks, matchedBlockCount, matchedRootCount, pageCount, docMode = model.FullTextSearchBlock(model.BlockSearchOptions{
+			Context:       c.Request.Context(),
+			Query:         query,
+			Boxes:         boxes,
+			Paths:         paths,
+			Types:         types,
+			SubTypes:      subTypes,
+			Method:        method,
+			OrderBy:       orderBy,
+			GroupBy:       groupBy,
+			Page:          page,
+			PageSize:      pageSize,
+			BoxID:         "",
+			SearchHPath:   new(searchHPath),
+			ExcludeBoxIDs: excludeBoxIDs,
+			ExcludeDocIDs: excludeDocIDs,
+		})
 	}
 	if c.Request.Context().Err() != nil {
 		return apicontract.Success[*apicontract.FullTextSearchBlockData](nil)

@@ -284,11 +284,13 @@ func flattenTemplateDocTreeNodes0(nodes []*TemplateDocTreeNode) (ret []*Template
 }
 
 func (collector *templateDocTreeCollector) validateLocations() error {
+	confFileTreeSnapshot := Conf.LoadFileTree()
+
 	box := Conf.Box(collector.boxID)
 	if nil == box {
 		return ErrBoxNotFound
 	}
-	allowCreateDeeper := nil != Conf.FileTree && Conf.FileTree.AllowCreateDeeper
+	allowCreateDeeper := nil != confFileTreeSnapshot && confFileTreeSnapshot.AllowCreateDeeper
 	for _, node := range flattenTemplateDocTreeNodes0(collector.nodes) {
 		if depth := strings.Count(node.path, "/"); 7 < depth && !allowCreateDeeper {
 			return errors.New(Conf.Language(118))
@@ -415,11 +417,11 @@ func resolveTemplatePackageFile(rootTemplatePath, relativePath string) (string, 
 	if !gulu.File.IsSubPath(packageRoot, absPath) || !filelock.IsExist(absPath) {
 		return "", fmt.Errorf("child template [%s] not found in the current template package", relativePath)
 	}
-	realRoot, err := filepath.EvalSymlinks(packageRoot)
+	realRoot, err := util.ResolveRealPath(packageRoot)
 	if nil != err {
 		return "", err
 	}
-	realPath, err := filepath.EvalSymlinks(absPath)
+	realPath, err := util.ResolveRealPath(absPath)
 	if nil != err {
 		return "", err
 	}

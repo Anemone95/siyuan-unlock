@@ -1589,6 +1589,7 @@ if (response.code === 0 && response.data) {
   ```
 
     * `id`：要导出的文档块 ID
+    * `preserveTaskMarkers`：用于复制 Markdown 的可选布尔值，`true` 时保留 `[/]`、`[-]` 等任务标记；省略、`null` 或 `false` 时保持标准 Markdown 兼容行为，将非标准标记归一化为 `[X]`
 * 返回值
 
   ```json
@@ -1603,7 +1604,7 @@ if (response.code === 0 && response.data) {
   ```
 
     * `hPath`：人类可读的路径
-    * `content`：Markdown 内容
+    * `content`：Markdown 内容，文档启用标题自动编号时包含编号（文档设置优先于编辑器默认设置）；使用编辑器编号格式，局部导出保留原文档编号
 
 ### 导出文件与目录
 
@@ -1923,6 +1924,7 @@ if (response.code === 0 && response.data) {
 | `url`        | URL                  |
 | `email`      | 邮箱                 |
 | `phone`      | 电话                 |
+| `location` | 位置 |
 | `mAsset`     | 资源                 |
 | `template`   | 模板                 |
 | `created`    | 创建时间             |
@@ -1962,6 +1964,7 @@ if (response.code === 0 && response.data) {
     * `groupPaging`: 分组（看板）视图的可选分页配置
     * `targetItemID`: 可选的待定位数据库条目 ID。指定后，返回值中包含目标定位信息
     * `targetGroupID`: 与 `targetItemID` 配合使用的可选分组提示
+    * `temporarySort`: 可选的单字段排序，例如 `{"column":"field-id","order":"DESC"}`。省略或为 `null` 时使用已保存规则；指定时仅覆盖本次请求的排序，在分页前生效，不创建或保存数据库，也不改变载体默认视图。`order` 必须为 `ASC` 或 `DESC`；字段缺失或不支持排序时恢复已保存规则。支持现有的 `valueSource` 和 `dateEndpoint` 选项
     * `createIfNotExist`: 为 `true`（默认）时，若数据库不存在则创建包含默认视图的数据库
     * `persistView`: 已废弃的兼容参数。接口仍接受该参数但会忽略，因为数据库定义不再存储顶层当前视图
 * 返回值（真实响应，表格布局，展示一行）：
@@ -2112,6 +2115,7 @@ if (response.code === 0 && response.data) {
     * `blockID`: 嵌入该数据库的数据库块，用于解析当前视图、发布权限和块级上下文筛选。仅在独立数据库且不需要块上下文时省略
     * `viewID`: 可选的明确视图 ID。省略时先通过 `blockID` 解析，无法解析则使用第一个可用视图
     * `query`: 可选的主键值全文过滤关键字
+    * `groupID`: 可选的分组 ID。省略、null 或空字符串时保持整个视图行为；指定时仅返回该分组图片，先按组内条目顺序排列，再应用视图排序，不受分页限制。分组不存在时返回错误
 * 返回值：应用数据库块上下文筛选、视图筛选与排序后，可见资源字段中的图片资源路径数组
 
   ```json
@@ -2198,8 +2202,7 @@ if (response.code === 0 && response.data) {
                   "pin": false,
                   "width": ""
                 }
-              ],
-              "rowIds": null
+              ]
             },
             "itemIds": ["20240118203818-ct041hj", "20240118203855-sqzbja0", "20240118203831-fkfvvtx", "20240118203842-kc31ovy", "20240531235026-uiap07y"],
             "groupCreated": 0,
@@ -2215,6 +2218,8 @@ if (response.code === 0 && response.data) {
   ```
 
     * `data.av`: 完整的 `AttributeView` 定义——字段（`keyValues`）、字段顺序（`keyIDs`，可能为 `null`），以及所有视图的原始布局配置（`table`/`list`/`gallery`/`kanban`）和条目顺序（`itemIds`）。兼容字段 `viewID` 动态取第一个可用视图，不会持久化。返回值不含渲染后的行或分页；需要计算后的行数据请使用 [渲染](#渲染)
+
+    * `data.av.automations` 可选，保存数据库共享的规则（`spec: 1` 至 `4`）。`block` 触发器通过 `blockSource` 指定笔记本/文档范围、块类型、标签和自定义属性，`collect` 动作将符合条件的原块绑定到当前数据库。主类型包含全部子类型；格式 3 支持 `h:h1` 至 `h:h6`、`l:u/o/t`、`i:u/o/t` 和 `callout:TYPE`（区分大小写，允许自定义提示类型）。类型为空不限制，多个类型取任一匹配。自动创建的主键值可能包含由内核维护的 `block.collectionRuleID`。自动收集只添加条目，原文变化及规则条件、范围、对象或启用状态变化均保留已有条目和字段，再次匹配仍使用原条目。主动清理按全部启用的收集规则统一检查手动和自动绑定条目，保留匹配或无法判断的条目，执行前复查后仅移出确认不匹配的条目；撤销恢复原条目及全部字段。 `blockSource.tagMatch` 和 `attributeMatch` 缺省为 `and`，格式 3 支持各组独立设置 `or`；组间仍取与关系，空组不限制。 每条规则的可选 `notifyOnSuccess` 缺省或 `null` 为 `true`，实际变更在事务提交成功后合并通知；关闭不影响错误提示。无变化、手动收集、撤销重做及回滚事务不发送成功通知。 格式 4 增加可选的 `blockSource.tagTarget`：缺省或空字符串使用默认选择，优先收集合格列表项而非其首个内容块，`block` 收集标签所在块，`container` 选择最近的符合类型和属性条件的容器并按块 ID 去重；文档需显式选择 `d`。全部标签须在同一个来源块中，无标签条件时此选项不影响筛选。预览与实际收集对象一致，切换保留已有条目及字段。
 
 ### 获取主键值
 
@@ -2347,11 +2352,17 @@ if (response.code === 0 && response.data) {
 | `url`      | `{"url": {"content": "https://siyuan.com"}}`                                                                         |
 | `email`    | `{"email": {"content": "a@b.com"}}`                                                                                  |
 | `phone`    | `{"phone": {"content": "1234567890"}}`                                                                               |
+| `location` | `{"location":{"name":"Home","latitude":0,"longitude":0,"originalInput":"0, 0"}}` |
+| `mAsset`   | `{"mAsset": [{"type": "image", "name": "图片", "content": "https://example.com/image"}]}` |
 | `checkbox` | `{"checkbox": {"checked": true}}`                                                                                    |
+
+对于 `mAsset`，每项使用 `type: "image"` 渲染图片，或使用 `type: "file"` 渲染文件链接。更新值会替换整个 `mAsset` 数组，因此追加资源时必须包含已有条目。
 
 > ⚠️ `itemID` 是**条目 ID**，即[渲染](#渲染)返回的条目 `id`：表格和列表为 `rows[].id`，卡片和看板为 `cards[].id`，启用分组时位于 `groups[]` 的对应视图实例中。它也等于主键值的 `value.blockID`。对于绑定条目，绑定块 ID 位于主键值的 `value.block.id`；二者是不同概念，不能假设相等。传入错误的 ID 会把值存为孤儿数据，不会出现在渲染后的单元格中。
 
 对于富文本，`text.rich.content` 是权威的 Kramdown 源。内核会校验其受支持的结构并派生 `text.content` 纯文本投影；调用方提供的纯文本投影会被忽略。为兼容现有 API 客户端，省略 `text.rich` 时，如果 `text.content` 未改变则保留已存储的富文本载荷，如果 `text.content` 改变则以纯文本替换。即使纯文本投影未改变，也可以发送 `"rich": null` 明确移除富文本格式。包含富文本的数据库使用存储规范 9，无法由仅支持更早数据库规范的内核打开。
+
+`location` 的 `name` 可选。`latitude` 和 `longitude` 必须同时缺省或为 null，或者同时为有限数值，范围分别为 [-90, 90] 和 [-180, 180]；零是有效坐标。所有坐标隐式使用 WGS84，保存时不自动转换。位置值不接受显式坐标系属性，字段不提供默认坐标系设置。`originalInput` 保留来源文本，不参与筛选和排序。更新时省略成员会保留已有值；清空位置可发送 `{"location":null}`，或显式清空名称并将两个坐标都设为 null。坐标变化时，省略的 `originalInput` 会自动清空；显式提供的来源文本会被保留。文本筛选使用 `{"type":"location","text":{"content":"查询词"}}`，匹配名称和坐标。位置字段使用数据库存储版本 13，旧版内核无法打开；未使用位置字段的数据库保留原有存储版本。
 
 * `/api/av/setAttributeViewBlockAttr`
 * 参数
@@ -2708,7 +2719,7 @@ if (response.code === 0 && response.data) {
     * `avID`: 数据库 ID
     * `keyID`: 新字段 ID。需为 `Lute.NewNodeID()` 生成的合法节点 ID（14 位时间戳 + `-` + 7 位随机字母数字，如 `20240118120204-abc1234`）
     * `keyName`: 字段显示名
-    * `keyType`: 字段类型——`text`、`number`、`date`、`select`、`mSelect`、`url`、`email`、`phone`、`mAsset`、`template`、`created`、`updated`、`checkbox`、`relation`、`rollup`、`lineNumber` 之一。`block`（主键）不能通过该接口添加
+    * `keyType`: 字段类型——`text`、`number`、`date`、`select`、`mSelect`、`url`、`email`、`phone`、`location`、`mAsset`、`template`、`created`、`updated`、`checkbox`、`relation`、`rollup`、`lineNumber` 之一。`block`（主键）不能通过该接口添加
     * `keyIcon`: 可选字段图标（emoji 或空字符串）
     * `previousKeyID`: 在此字段 ID 之后插入新列。为空字符串时使用布局默认位置（表格插入到首位，列表/卡片/看板插入到末尾）
 * 返回值

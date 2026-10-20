@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -250,6 +251,16 @@ func queueHPathRefreshLocked(tree *parse.Tree) (key string, err error) {
 }
 
 func writeRenameDoc(tree *parse.Tree) (size uint64, err error) {
+	return writeRenameDocWith(tree, filesys.WriteTree)
+}
+
+func writeRenameDocIfUnchanged(tree *parse.Tree, original []byte) (uint64, error) {
+	return writeRenameDocWith(tree, func(tree *parse.Tree) (uint64, error) {
+		return filesys.WriteTreeIfUnchanged(tree, original)
+	})
+}
+
+func writeRenameDocWith(tree *parse.Tree, write func(*parse.Tree) (uint64, error)) (size uint64, err error) {
 	if err = AcquireEncryptedBoxOperation(tree.Box); err != nil {
 		return
 	}
@@ -264,7 +275,7 @@ func writeRenameDoc(tree *parse.Tree) (size uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	if size, err = filesys.WriteTree(tree); err != nil {
+	if size, err = write(tree); err != nil {
 		return
 	}
 	if treenode.GetBlockTreeInBox(tree.ID, tree.Box) == nil {
@@ -382,9 +393,7 @@ func RefreshHPathsJob() {
 		}
 		delete(hpathRefresh.tasks, key)
 		if err = saveHPathRefreshLocked(); err != nil {
-			for removedKey, removedTask := range removed {
-				hpathRefresh.tasks[removedKey] = removedTask
-			}
+			maps.Copy(hpathRefresh.tasks, removed)
 			logging.LogErrorf("save hpath refresh tasks failed: %s", err)
 			return
 		}

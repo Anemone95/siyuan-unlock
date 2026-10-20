@@ -6,7 +6,7 @@
 		"id": "20210612224500-ywcms1m",
 		"title": "内容块属性",
 		"type": "doc",
-		"updated": "20260922175346"
+		"updated": "20261016111305"
 	},
 	"Children": [
 		{
@@ -44,7 +44,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20210613004126-79loyta",
-				"updated": "20260922175346"
+				"updated": "20261012014930"
 			},
 			"Children": [
 				{
@@ -62,7 +62,7 @@
 			],
 			"Properties": {
 				"id": "20210613004249-56e0c6r",
-				"updated": "20260922175346"
+				"updated": "20261012014859"
 			},
 			"Children": [
 				{
@@ -146,38 +146,7 @@
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "内容块的别名。在属性面板中，多个别名分别显示为标签。点击「新增别名」添加，点击已有别名编辑，点击其关闭图标删除。输入时可用英文逗号分隔，批量添加多个别名。按 "
-								},
-								{
-									"Type": "NodeTextMark",
-									"TextMarkType": "kbd",
-									"TextMarkTextContent": "Enter"
-								},
-								{
-									"Type": "NodeText",
-									"Data": " 或移开输入焦点保存，按 "
-								},
-								{
-									"Type": "NodeTextMark",
-									"TextMarkType": "kbd",
-									"TextMarkTextContent": "Esc"
-								},
-								{
-									"Type": "NodeText",
-									"Data": " 取消本次输入。新输入会去除首尾空白、过滤空项和完全相同的重复项。"
-								},
-								{
-									"Type": "NodeText",
-									"Data": "拖动别名可调整顺序，松开后保存；触屏也支持拖动。拖动时按 "
-								},
-								{
-									"Type": "NodeTextMark",
-									"TextMarkType": "kbd",
-									"TextMarkTextContent": "Esc"
-								},
-								{
-									"Type": "NodeText",
-									"Data": " 可取消排序。"
+									"Data": "内容块的别名"
 								}
 							]
 						}
@@ -240,12 +209,72 @@
 			]
 		},
 		{
+			"ID": "20261012014537-sfcl392",
+			"Type": "NodeHeading",
+			"Properties": {
+				"id": "20261012014537-sfcl392",
+				"updated": "20261012014859"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "编辑别名"
+				}
+			],
+			"HeadingLevel": 3
+		},
+		{
+			"ID": "20261012014537-q7fxlnn",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261012014537-q7fxlnn",
+				"updated": "20261012014859"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "在属性面板中，多个别名分别显示为标签。点击「新增别名」添加，点击已有别名编辑，点击其关闭图标删除。输入时可用英文逗号分隔，批量添加多个别名。按 "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Enter"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " 或移开输入焦点保存，按 "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Esc"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " 取消本次输入。新输入会去除首尾空白、过滤空项和完全相同的重复项。"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "拖动别名可调整顺序，松开后保存；触屏也支持拖动。拖动时按 "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Esc"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " 可取消排序。"
+				}
+			]
+		},
+		{
 			"ID": "20210613004117-1jnl9m0",
 			"Type": "NodeHeading",
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20210613004117-1jnl9m0",
-				"updated": "20251201102135"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -259,7 +288,7 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20210613004135-7td7u1o",
-				"updated": "20251201102135"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -282,7 +311,7 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ 进行设置，属性名仅允许使用小写英文字母和阿拉伯数字并且需要以字母开头（例如 "
+					"Data": "​ 进行设置，属性名须以小写英文字母开头，可包含小写英文字母、数字和连字符（-）；输入的大写字母会自动转为小写（例如 "
 				},
 				{
 					"Type": "NodeTextMark",
@@ -297,6 +326,15 @@
 					"Type": "NodeTextMark",
 					"TextMarkType": "code",
 					"TextMarkTextContent": "day1"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "project-id"
 				},
 				{
 					"Type": "NodeText",

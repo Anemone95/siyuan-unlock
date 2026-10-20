@@ -45,7 +45,7 @@ func TestAuthCodeEquals(t *testing.T) {
 func TestAuthThrottleThreshold(t *testing.T) {
 	key := "TestAuthThrottleThreshold"
 	resetAuthThrottleForTest(key)
-	for i := 0; i < authThrottleMaxFail; i++ {
+	for i := range authThrottleMaxFail {
 		if retryAfter := AuthThrottleCheck(key); 0 < retryAfter {
 			t.Fatalf("locked before reaching threshold at attempt %d", i+1)
 		}
@@ -61,11 +61,11 @@ func TestAuthThrottleThreshold(t *testing.T) {
 func TestAuthThrottleBackoff(t *testing.T) {
 	key := "TestAuthThrottleBackoff"
 	resetAuthThrottleForTest(key)
-	for i := 0; i < authThrottleMaxFail+1; i++ {
+	for range authThrottleMaxFail + 1 {
 		AuthThrottleFail(key)
 	}
 	firstLock := time.Until(authThrottles[key].LockUntil)
-	for i := 0; i < authThrottleMaxFail; i++ {
+	for range authThrottleMaxFail {
 		AuthThrottleFail(key)
 	}
 	extendedLock := time.Until(authThrottles[key].LockUntil)
@@ -74,6 +74,27 @@ func TestAuthThrottleBackoff(t *testing.T) {
 	}
 	if authThrottleLockMaxSec*time.Second < extendedLock {
 		t.Fatalf("lock exceeded the cap: %v", extendedLock)
+	}
+}
+
+func TestAuthThrottleSaturation(t *testing.T) {
+	key := "TestAuthThrottleSaturation"
+	resetAuthThrottleForTest(key)
+	t.Cleanup(func() { resetAuthThrottleForTest(key) })
+	for i := 1; i <= 1000; i++ {
+		AuthThrottleFail(key)
+		if i < 10 {
+			continue
+		}
+		if retryAfter := AuthThrottleCheck(key); retryAfter < authThrottleLockMaxSec || retryAfter > authThrottleLockMaxSec+1 {
+			t.Fatalf("lock lost its cap after %d failures: %d", i, retryAfter)
+		}
+	}
+	authThrottleLock.Lock()
+	count := authThrottles[key].FailCount
+	authThrottleLock.Unlock()
+	if count > 10 {
+		t.Fatalf("failure count was not saturated: %d", count)
 	}
 }
 
@@ -98,7 +119,7 @@ func TestAuthThrottleWindowReset(t *testing.T) {
 func TestAuthThrottleReset(t *testing.T) {
 	key := "TestAuthThrottleReset"
 	resetAuthThrottleForTest(key)
-	for i := 0; i < authThrottleMaxFail+1; i++ {
+	for range authThrottleMaxFail + 1 {
 		AuthThrottleFail(key)
 	}
 	if retryAfter := AuthThrottleCheck(key); 0 >= retryAfter {
@@ -114,7 +135,7 @@ func TestAuthThrottleReset(t *testing.T) {
 func TestAuthThrottleExpiry(t *testing.T) {
 	key := "TestAuthThrottleExpiry"
 	resetAuthThrottleForTest(key)
-	for i := 0; i < authThrottleMaxFail+1; i++ {
+	for range authThrottleMaxFail + 1 {
 		AuthThrottleFail(key)
 	}
 	authThrottleLock.Lock()
@@ -134,7 +155,7 @@ func TestAuthThrottleExpiry(t *testing.T) {
 // TestAuthThrottleSweep 验证定期清扫会删除窗口期已过的失败记录，即使 key 不再被访问。
 func TestAuthThrottleSweep(t *testing.T) {
 	staleKeys := make([]string, 0, 64)
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		key := fmt.Sprintf("TestAuthThrottleSweep-stale-%d", i)
 		AuthThrottleFail(key)
 		defer resetAuthThrottleForTest(key)
@@ -165,7 +186,7 @@ func TestAuthThrottleSweepKeepsLocked(t *testing.T) {
 	key := "TestAuthThrottleSweepKeepsLocked"
 	resetAuthThrottleForTest(key)
 	defer resetAuthThrottleForTest(key)
-	for i := 0; i < authThrottleMaxFail+1; i++ {
+	for range authThrottleMaxFail + 1 {
 		AuthThrottleFail(key)
 	}
 	authThrottleLock.Lock()
@@ -192,7 +213,7 @@ func TestAuthThrottleMaxEntries(t *testing.T) {
 	}
 	authThrottleLock.Unlock()
 
-	for i := 0; i < authThrottleMaxEntries+50; i++ {
+	for i := range authThrottleMaxEntries + 50 {
 		AuthThrottleFail(fmt.Sprintf("TestAuthThrottleMaxEntries-%d", i))
 	}
 	authThrottleLock.Lock()

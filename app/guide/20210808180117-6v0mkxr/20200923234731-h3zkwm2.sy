@@ -7,16 +7,123 @@
 		"id": "20200923234731-h3zkwm2",
 		"title": "FAQ",
 		"type": "doc",
-		"updated": "20260810212846"
+		"updated": "20261018005815"
 	},
 	"Children": [
+		{
+			"ID": "20261002224424-1kkgs4r",
+			"Type": "NodeHeading",
+			"HeadingLevel": 2,
+			"Properties": {
+				"id": "20261002224424-1kkgs4r",
+				"updated": "20261002224424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "How do I reset settings?"
+				}
+			]
+		},
+		{
+			"ID": "20261002224424-q0ksmo0",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261002224424-q0ksmo0",
+				"updated": "20261002224424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "Open "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Settings"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "App"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Maintenance"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Reset settings"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " to restore ordinary preferences, built-in shortcuts, menu and mobile toolbar preferences, and the current window layout in this workspace."
+				}
+			]
+		},
+		{
+			"ID": "20261002224424-0zfiohz",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261002224424-0zfiohz",
+				"updated": "20261002224424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "Notes, assets, history, snapshots, flashcard progress and the current history retention period are preserved. Accounts, authentication, sync and encryption keys, AI/MCP connections, secrets, variables, language and network configuration are also preserved."
+				}
+			]
+		},
+		{
+			"ID": "20261002224424-p60g1r1",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261002224424-p60g1r1",
+				"updated": "20261002224424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "Installed themes and icons remain installed, while the default appearance is selected. Plugins and code snippets, including their enabled states, plugin shortcuts and saved layouts are preserved. App-wide settings such as the update channel, accessibility, Linux input method and launch at login remain unchanged."
+				}
+			]
+		},
+		{
+			"ID": "20261002224424-veqlmu5",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261002224424-veqlmu5",
+				"updated": "20261002224424"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "All clients connected to this workspace must finish saving before the reset; if saving fails, the reset is cancelled. The clients then reload. When started from the local desktop app, the app exits after reloading; restart it to continue. Mobile and browser clients only reload."
+				}
+			]
+		},
 		{
 			"ID": "20210428222532-nfvnq4d",
 			"Type": "NodeHeading",
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20210428222532-nfvnq4d",
-				"updated": "20210428222834"
+				"updated": "20261016191102"
 			},
 			"Children": [
 				{
@@ -60,7 +167,7 @@
 			"ListData": {},
 			"Properties": {
 				"id": "20210428222603-moih9fe",
-				"updated": "20230622164128"
+				"updated": "20261016191102"
 			},
 			"Children": [
 				{
@@ -406,7 +513,8 @@
 						"Marker": "Kg=="
 					},
 					"Properties": {
-						"id": "20210428222603-27so3jy"
+						"id": "20210428222603-27so3jy",
+						"updated": "20261016191102"
 					},
 					"Children": [
 						{
@@ -414,7 +522,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20210428222603-pwyr56t",
-								"updated": "20210512152423"
+								"updated": "20261016191102"
 							},
 							"Children": [
 								{
@@ -428,7 +536,14 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​​​​ in the notebook folder are used to save the document data, and the data format is JSON"
+									"Data": "​​​​ in the notebook folder store document data. Ordinary notebooks store document data as JSON. Encrypted notebooks store document files as ciphertext, which must not be read or edited directly as JSON. See "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "block-ref",
+									"TextMarkBlockRefID": "20260907120000-cryen01",
+									"TextMarkBlockRefSubtype": "d",
+									"TextMarkTextContent": "Encrypted Notebook"
 								}
 							]
 						}
@@ -442,7 +557,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20220808181753-3ligpvz",
-				"updated": "20260810212846"
+				"updated": "20261016191102"
 			},
 			"Children": [
 				{
@@ -510,7 +625,7 @@
 			"ListData": {},
 			"Properties": {
 				"id": "20220619172044-z4myy48",
-				"updated": "20260810212846"
+				"updated": "20261016191102"
 			},
 			"Children": [
 				{
@@ -522,7 +637,7 @@
 					},
 					"Properties": {
 						"id": "20220619172044-451fqpf",
-						"updated": "20260810212846"
+						"updated": "20261016191102"
 					},
 					"Children": [
 						{
@@ -530,7 +645,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20220619172044-bx4v3iz",
-								"updated": "20260810212846"
+								"updated": "20261016191102"
 							},
 							"Children": [
 								{
@@ -544,7 +659,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​​ - "
+									"Data": " - "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -553,7 +668,16 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​​ - "
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -562,16 +686,39 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ / "
+									"Data": " / "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Settings"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "App"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
 								},
 								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "kbd",
 									"TextMarkTextContent": "Import Data"
-								},
-								{
-									"Type": "NodeText",
-									"Data": "​​"
 								}
 							]
 						}
@@ -586,7 +733,7 @@
 					},
 					"Properties": {
 						"id": "20220619172044-r6xfdvm",
-						"updated": "20260810212846"
+						"updated": "20261016191102"
 					},
 					"Children": [
 						{
@@ -594,7 +741,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20220619172044-ccusmko",
-								"updated": "20260810212846"
+								"updated": "20261016191102"
 							},
 							"Children": [
 								{
@@ -604,11 +751,11 @@
 								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "kbd",
-									"TextMarkTextContent": "Right column"
+									"TextMarkTextContent": "Settings"
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ - "
+									"Data": " - "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -617,7 +764,16 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ - "
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -631,11 +787,34 @@
 								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "kbd",
-									"TextMarkTextContent": "Import Data"
+									"TextMarkTextContent": "Settings"
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​"
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "App"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "Import Data"
 								}
 							]
 						}
@@ -889,12 +1068,62 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20220501231348-sx3l5qp",
-				"updated": "20260809232000"
+				"updated": "20261018005815"
 			},
 			"Children": [
 				{
 					"Type": "NodeText",
 					"Data": "What if some blocks (such as paragraph blocks in list items) cannot find the block icon?"
+				}
+			]
+		},
+		{
+			"ID": "20261017212429-ykfqzzo",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017212429-ykfqzzo",
+				"updated": "20261018005815"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "By default, block indicators are simplified. Lists with only one item retain both the list and list item indicators. To show indicators for the current block and all its containers, turn on "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Settings"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Editor"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Behavior"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Show full block indicators"
+				},
+				{
+					"Type": "NodeText",
+					"Data": ". Each indicator opens the corresponding block menu and provides a drag handle."
 				}
 			]
 		},

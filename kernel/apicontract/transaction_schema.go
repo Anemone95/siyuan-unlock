@@ -1,6 +1,10 @@
 package apicontract
 
-import "reflect"
+import (
+	"maps"
+	"reflect"
+	"slices"
+)
 
 type transactionActionPayload struct {
 	action       string
@@ -17,6 +21,7 @@ var transactionActionPayloads = []transactionActionPayload{
 	{"delete", reflect.TypeFor[BlockDeleteData](), reflect.TypeFor[BlockOperationResult]()},
 	{"move", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
 	{"swapBlockRef", reflect.TypeFor[TransactionBlockSwap](), reflect.TypeFor[[]string]()},
+	{"convertList", reflect.TypeFor[TransactionListConversion](), reflect.TypeFor[TransactionListConversionResult]()},
 	{"moveOutlineHeading", reflect.TypeFor[Null](), reflect.TypeFor[BlockOperationResult]()},
 	{"append", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
 	{"appendInsert", reflect.TypeFor[string](), reflect.TypeFor[BlockOperationResult]()},
@@ -29,6 +34,9 @@ var transactionActionPayloads = []transactionActionPayload{
 	{"removeFlashcards", reflect.TypeFor[Null](), reflect.TypeFor[Null]()},
 	{"setAttrViewName", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
 	{"setAttrViewNewItemTemplates", reflect.TypeFor[TransactionNewItemTemplates](), reflect.TypeFor[Null]()},
+	{"setAttrViewAutomations", reflect.TypeFor[AVAutomationConfig](), reflect.TypeFor[Null]()},
+	{"collectAttrViewBlocks", reflect.TypeFor[AVCollectBlocks](), reflect.TypeFor[Null]()},
+	{"cleanupAttrViewBlocks", reflect.TypeFor[AVCollectionCleanup](), reflect.TypeFor[Null]()},
 	{"setAttrViewConditionalColors", reflect.TypeFor[[]*AVConditionalColorRule](), reflect.TypeFor[Null]()},
 	{"setAttrViewFilters", reflect.TypeFor[[]*AVViewFilter](), reflect.TypeFor[Null]()},
 	{"setAttrViewContextFilter", reflect.TypeFor[Null](), reflect.TypeFor[Null]()},
@@ -44,6 +52,8 @@ var transactionActionPayloads = []transactionActionPayload{
 	{"setAttrViewColPin", reflect.TypeFor[bool](), reflect.TypeFor[Null]()},
 	{"setAttrViewColIcon", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
 	{"setAttrViewColDesc", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
+	// 仅修改属性面板可见性；data 支持空字符串、always、hide-empty、hide，不影响数据库视图的字段显隐。
+	{"setAttrViewColAttributePanelVisibility", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
 	{"insertAttrViewBlock", reflect.TypeFor[Null](), reflect.TypeFor[TransactionInsertedItems]()},
 	{"removeAttrViewBlock", reflect.TypeFor[Null](), reflect.TypeFor[Null]()},
 	{"addAttrViewCol", reflect.TypeFor[string](), reflect.TypeFor[Null]()},
@@ -232,9 +242,7 @@ func transactionPayloadSchema(b *schemaBuilder, t reflect.Type, input bool) (*Sc
 
 func transactionOperationBranch(base *Schema, action, data, result *Schema, input bool) *Schema {
 	properties := map[string]*Schema{}
-	for key, value := range base.Properties {
-		properties[key] = value
-	}
+	maps.Copy(properties, base.Properties)
 	properties["action"], properties["data"], properties["retData"] = action, data, result
 	required := append([]string{}, base.Required...)
 	addRequired := []string{"data", "retData"}
@@ -242,13 +250,7 @@ func transactionOperationBranch(base *Schema, action, data, result *Schema, inpu
 		addRequired = []string{"action"}
 	}
 	for _, name := range addRequired {
-		found := false
-		for _, existing := range required {
-			if existing == name {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(required, name)
 		if !found {
 			required = append(required, name)
 		}

@@ -43,7 +43,6 @@ import (
 	"github.com/mssola/useragent"
 	"github.com/olahol/melody"
 	"github.com/siyuan-note/logging"
-	"github.com/siyuan-note/siyuan/kernel/agent"
 	"github.com/siyuan-note/siyuan/kernel/api"
 	"github.com/siyuan-note/siyuan/kernel/av"
 	"github.com/siyuan-note/siyuan/kernel/cmd"
@@ -138,9 +137,10 @@ var (
 )
 
 func Serve(fastMode bool, cookieKey string) {
-	if !fastMode {
-		agent.StartModelMetadataRefresh()
-	}
+	confAISnapshot := model.Conf.LoadAI()
+
+	confSystemSnapshot := model.Conf.LoadSystem()
+
 	gin.SetMode(gin.ReleaseMode)
 	ginServer := gin.New()
 	installMobileRequests(ginServer)
@@ -162,12 +162,16 @@ func Serve(fastMode bool, cookieKey string) {
 
 	sessionStore = cookie.NewStore([]byte(cookieKey))
 	sessionStore.Options(sessions.Options{
-		Path:   "/",
-		Secure: util.SSL,
-		//MaxAge:   60 * 60 * 24 * 7, // 默认是 Session
+		Path: "/",
+		// Secure 属性逐请求按连接修正，见 tlsEnforceMiddleware
+		Secure:   util.SSL,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, // 防止跨站请求伪造 https://github.com/siyuan-note/siyuan/security/advisories/GHSA-hhm2-g993-p656
 	})
+	// TLS 强制中间件必须在会话中间件之前：跳转要发生在会话保存之前，
+	// 否则明文响应仍会携带未标记 Secure 的会话 Cookie
+	// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-hpj5-f7cj-vvwr
+	ginServer.Use(tlsEnforceMiddleware())
 	ginServer.Use(sessions.Sessions("siyuan", sessionStore))
 
 	serveDebug(ginServer)
@@ -193,7 +197,7 @@ func Serve(fastMode bool, cookieKey string) {
 	api.ServeAPI(ginServer)
 
 	var host string
-	if model.Conf.System.NetworkServe || util.ContainerDocker == util.Container {
+	if confSystemSnapshot.NetworkServe || util.ContainerDocker == util.Container {
 		host = "0.0.0.0"
 	} else {
 		host = "127.0.0.1"
@@ -241,6 +245,17 @@ func Serve(fastMode bool, cookieKey string) {
 		certPath = ""
 	}
 
+	// 用户开启「启用 HTTPS」后网络服务必须真正强制加密传输，因此这里先把策略定下来：
+	// 证书不可用时不能静默退回明文，否则等于开关没生效却仍然宣称已加密。
+	// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-hpj5-f7cj-vvwr
+	tlsRequired := confSystemSnapshot.NetworkServeTLS && confSystemSnapshot.NetworkServe
+	util.SetTLSRequired(tlsRequired)
+	if tlsRequired && "" == certPath {
+		logging.LogErrorf("network serve TLS is enabled but no TLS certificate is available, "+
+			"plaintext HTTP requests from other hosts will be rejected [err=%s]", certErr)
+		go notifyTLSCertUnavailable()
+	}
+
 	if "" != certPath {
 		util.ServerURL, err = url.Parse("https://127.0.0.1:" + port)
 	} else {
@@ -255,9 +270,10 @@ func Serve(fastMode bool, cookieKey string) {
 		rewritePortJSON(pid, port)
 	}
 
-	useTLS := model.Conf.System.NetworkServeTLS && model.Conf.System.NetworkServe
+	useTLS := tlsRequired && "" != certPath
 	if useTLS {
-		logging.LogInfof("kernel [pid=%s] http server [%s] is booting (TLS will be enabled on fixed port proxy)", pid, host+":"+port)
+		logging.LogInfof("kernel [pid=%s] http server [%s] is booting (TLS enforced, "+
+			"plaintext requests from other hosts are redirected)", pid, host+":"+port)
 	} else if "" != certPath {
 		logging.LogInfof("kernel [pid=%s] http server [%s] is booting (local HTTPS + HTTP/2 enabled)", pid, host+":"+port)
 	} else {
@@ -269,8 +285,8 @@ func Serve(fastMode bool, cookieKey string) {
 
 	// 启动后自动连接已配置的 MCP server，让用户首次使用 AI Agent 时工具已就绪。
 	// EnsureMCPConnected 是异步的，不阻塞 HTTP 监听；内置 mcpConnecting 标志防止重复连接。
-	if model.Conf.AI != nil && model.Conf.AI.MCP != nil {
-		go mcpclient.EnsureMCPConnected(model.Conf.AI.MCP.Servers)
+	if confAISnapshot != nil && confAISnapshot.MCP != nil {
+		go mcpclient.EnsureMCPConnected(confAISnapshot.MCP.Servers)
 	}
 
 	go func() {
@@ -301,11 +317,17 @@ func Serve(fastMode bool, cookieKey string) {
 
 	prepareMobileHTTP(util.HttpServer)
 	if "" != certPath {
+<<<<<<< HEAD
 		if _, _, err = util.ServeMultiplexed(ln, httpHandler, certPath, keyPath, util.HttpServer, nil); err != nil {
 			if mobileServeReturned(err) {
 				return
 			}
 			// 退出时 model.Close() 调 util.HttpServer.Close() 会通过 cmux 派生 listener 关掉 root，
+=======
+		util.HttpsServer = &http.Server{Handler: httpHandler}
+		if _, _, err = util.ServeMultiplexed(ln, httpHandler, certPath, keyPath, util.HttpServer, util.HttpsServer); err != nil {
+			// 服务退出时通过 cmux 派生 listener 关掉 root，
+>>>>>>> v3.8.8
 			// m.Serve() 随后返回 *net.OpError("use of closed network connection")；
 			// net.ErrClosed 即该错误的哨兵，须一并视为正常退出，否则会被误判为致命错误并 os.Exit(21)
 			if errors.Is(err, http.ErrServerClosed) || errors.Is(err, cmux.ErrListenerClosed) || errors.Is(err, net.ErrClosed) {
@@ -681,7 +703,7 @@ func serveStaticFile(c *gin.Context, root, relativePath string, packageScoped bo
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	rootRealPath, err := filepath.EvalSymlinks(rootAbsPath)
+	rootRealPath, err := util.ResolveRealPath(rootAbsPath)
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
@@ -701,7 +723,7 @@ func serveStaticFile(c *gin.Context, root, relativePath string, packageScoped bo
 		targetPath = filepath.Join(targetPath, "index.html")
 	}
 
-	targetRealPath, err := filepath.EvalSymlinks(targetPath)
+	targetRealPath, err := util.ResolveRealPath(targetPath)
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
@@ -712,7 +734,7 @@ func serveStaticFile(c *gin.Context, root, relativePath string, packageScoped bo
 		firstSegment, _, _ := strings.Cut(filepath.ToSlash(relativePath), "/")
 		if firstSegment != "" {
 			packageRoot := filepath.Join(rootAbsPath, filepath.FromSlash(firstSegment))
-			if resolvedPackageRoot, resolveErr := filepath.EvalSymlinks(packageRoot); resolveErr == nil {
+			if resolvedPackageRoot, resolveErr := util.ResolveRealPath(packageRoot); resolveErr == nil {
 				allowedRoot = resolvedPackageRoot
 			}
 		}
@@ -854,29 +876,27 @@ func serveAppearance(ginServer *gin.Engine) {
 					return
 				}
 
-				for {
-					data, err := os.ReadFile(filePath)
-					if err != nil {
-						c.JSON(200, enUSMap)
-						return
-					}
-					data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
-
-					langMap := map[string]any{}
-					if err = gulu.JSON.UnmarshalJSON(data, &langMap); err != nil {
-						logging.LogErrorf("unmarshal json [%s] failed: %s", filePath, err)
-						c.JSON(200, enUSMap)
-						return
-					}
-
-					for enUSDataKey, enUSDataValue := range enUSMap {
-						if _, ok := langMap[enUSDataKey]; !ok {
-							langMap[enUSDataKey] = enUSDataValue
-						}
-					}
-					c.JSON(200, langMap)
+				data, err := os.ReadFile(filePath)
+				if err != nil {
+					c.JSON(200, enUSMap)
 					return
 				}
+				data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+
+				langMap := map[string]any{}
+				if err = gulu.JSON.UnmarshalJSON(data, &langMap); err != nil {
+					logging.LogErrorf("unmarshal json [%s] failed: %s", filePath, err)
+					c.JSON(200, enUSMap)
+					return
+				}
+
+				for enUSDataKey, enUSDataValue := range enUSMap {
+					if _, ok := langMap[enUSDataKey]; !ok {
+						langMap[enUSDataKey] = enUSDataValue
+					}
+				}
+				c.JSON(200, langMap)
+				return
 			}
 		}
 
@@ -891,6 +911,10 @@ func serveCheckAuth(ginServer *gin.Engine) {
 }
 
 func serveAuthPage(c *gin.Context) {
+	confAppearanceSnapshot := model.Conf.LoadAppearance()
+
+	confKeymapSnapshot := model.Conf.LoadKeymap()
+
 	data, err := os.ReadFile(filepath.Join(util.WorkingDir, "stage/auth.html"))
 	if err != nil {
 		logging.LogErrorf("load auth page failed: %s", err)
@@ -906,10 +930,10 @@ func serveAuthPage(c *gin.Context) {
 	}
 
 	keymapHideWindow := "⌥M"
-	if nil != (*model.Conf.Keymap)["general"] {
-		switch (*model.Conf.Keymap)["general"].(type) {
+	if nil != (*confKeymapSnapshot)["general"] {
+		switch (*confKeymapSnapshot)["general"].(type) {
 		case map[string]any:
-			keymapGeneral := (*model.Conf.Keymap)["general"].(map[string]any)
+			keymapGeneral := (*confKeymapSnapshot)["general"].(map[string]any)
 			if nil != keymapGeneral["toggleWin"] {
 				switch keymapGeneral["toggleWin"].(type) {
 				case map[string]any:
@@ -941,8 +965,8 @@ func serveAuthPage(c *gin.Context) {
 		"l13":                    model.Conf.Language(365),
 		"accessAuthCodeEnabled":  model.Conf.AccessAuthCode != "",
 		"oidcEnabled":            model.Conf.GetOIDC().Enabled,
-		"appearanceMode":         model.Conf.Appearance.Mode,
-		"appearanceModeOS":       model.Conf.Appearance.ModeOS,
+		"appearanceMode":         confAppearanceSnapshot.Mode,
+		"appearanceModeOS":       confAppearanceSnapshot.ModeOS,
 		"workspace":              util.WorkspaceName,
 		"keymapGeneralToggleWin": keymapHideWindow,
 		"trayMenuLangs":          util.TrayMenuLangs[util.Lang],
@@ -1322,7 +1346,7 @@ func serveSVG(context *gin.Context, assetAbsPath string) bool {
 			}()
 		}
 
-		if !model.Conf.Editor.AllowSVGScript {
+		if !model.Conf.Editor.Load().AllowSVGScript {
 			sanitized, sanitizeErr := util.SanitizeSVG(string(data))
 			if sanitizeErr != nil {
 				logging.LogWarnf("sanitize svg file failed [%s]: %s", assetAbsPath, sanitizeErr)
@@ -1806,6 +1830,37 @@ func serveDebug(ginServer *gin.Engine) {
 	ginServer.GET("/debug/pprof/trace", model.CheckAuth, model.CheckAdminRole, gin.WrapF(pprof.Trace))
 }
 
+// isLocalWebSocketRequest 判断未设置锁屏密码时的 WebSocket 握手是否来自本机可信来源。
+// 与 HTTP 接口的放行策略保持一致：直接对端、转发来源、Host 与 Origin 都必须指向本机，
+// 避免远程客户端绕过锁屏密码接入推送通道。
+func isLocalWebSocketRequest(r *http.Request) bool {
+	if !util.IsLocalHost(r.RemoteAddr) {
+		return false
+	}
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); "" != forwardedFor {
+		clientIP, _, _ := strings.Cut(forwardedFor, ",")
+		if !util.IsLocalHostname(strings.TrimSpace(clientIP)) {
+			return false
+		}
+	}
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); "" != forwardedHost && !isLocalHostHeader(forwardedHost) {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); "" != origin && !util.IsLocalOrigin(origin) {
+		return false
+	}
+	return isLocalHostHeader(r.Host)
+}
+
+// isLocalHostHeader 判断 Host 头是否指向本机，允许 Host 省略端口。
+func isLocalHostHeader(host string) bool {
+	host = strings.TrimSpace(host)
+	if hostname, _, err := net.SplitHostPort(host); err == nil {
+		return util.IsLocalHostname(hostname)
+	}
+	return util.IsLocalHostname(host)
+}
+
 func serveWebSocket(ginServer *gin.Engine) {
 	util.WebSocketServer = melody.New()
 	// 校验 Origin，防止跨站 WebSocket 劫持（CSWSH） https://github.com/siyuan-note/siyuan/security/advisories/GHSA-3cc2-h3v6-rqpq
@@ -1835,7 +1890,9 @@ func serveWebSocket(ginServer *gin.Engine) {
 			return
 		}
 
-		authOk := !model.IsAccessAuthRequired()
+		// 未设置锁屏密码时只放行本机连接，与 HTTP 接口的放行策略保持一致，
+		// 否则远程客户端可以完全跳过认证接收内核推送
+		authOk := !model.IsAccessAuthRequired() && (util.SiYuanAccessAuthCodeBypass || isLocalWebSocketRequest(s.Request))
 
 		if model.IsAccessAuthRequired() {
 			session, err := sessionStore.Get(s.Request, "siyuan")
@@ -1909,8 +1966,7 @@ func serveWebSocket(ginServer *gin.Engine) {
 	})
 
 	util.WebSocketServer.HandleError(func(s *melody.Session, err error) {
-		//sessionId, _ := s.Get("id")
-		//logging.LogWarnf("ws [%s] failed: %s", sessionId, err)
+		util.LogWebSocketError(s, "main", err)
 	})
 
 	util.WebSocketServer.HandleClose(func(s *melody.Session, i int, str string) error {
@@ -1919,75 +1975,86 @@ func serveWebSocket(ginServer *gin.Engine) {
 		return nil
 	})
 
-	util.WebSocketServer.HandleMessage(func(s *melody.Session, msg []byte) {
-		start := time.Now()
-		logging.LogTracef("request [%s]", shortReqMsg(msg))
+	util.WebSocketServer.HandleMessage(handleWebSocketMessage)
+}
 
-		if util.IsAuthSession(s) {
+func handleWebSocketMessage(s *melody.Session, msg []byte) {
+	badRequest := func() {
+		result := util.NewResult()
+		result.Code = -1
+		result.Msg = "Bad Request"
+		s.Write(result.Bytes())
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logging.LogErrorf("handle websocket message failed: %v", recovered)
+			badRequest()
+		}
+	}()
+	start := time.Now()
+	logging.LogTracef("request [%s]", shortReqMsg(msg))
+
+	if util.IsAuthSession(s) {
+		return
+	}
+	if value, ok := s.Get("oidcSessionVersion"); ok {
+		version, valid := value.(string)
+		if !valid || !model.IsOIDCSessionVersionCurrent(version) {
+			s.CloseWithMsg([]byte("  OIDC session expired"))
 			return
 		}
-		if value, ok := s.Get("oidcSessionVersion"); ok {
-			version, valid := value.(string)
-			if !valid || !model.IsOIDCSessionVersionCurrent(version) {
-				s.CloseWithMsg([]byte("  OIDC session expired"))
-				return
+	}
+
+	request := map[string]any{}
+	if err := gulu.JSON.UnmarshalJSON(msg, &request); err != nil {
+		badRequest()
+		return
+	}
+
+	if _, ok := s.Get("app"); !ok {
+		badRequest()
+		return
+	}
+
+	cmdStr, cmdOK := request["cmd"].(string)
+	cmdId, idOK := request["reqId"].(float64)
+	param, paramOK := request["param"].(map[string]any)
+	if !cmdOK || !idOK || !paramOK {
+		badRequest()
+		return
+	}
+	command := cmd.NewCommand(cmdStr, cmdId, param, s)
+	if nil == command {
+		result := util.NewResult()
+		result.Code = -1
+		result.Msg = "can not find command [" + cmdStr + "]"
+		s.Write(result.Bytes())
+		return
+	}
+	if !command.IsRead() {
+		readonly := util.ReadOnly
+		if !readonly {
+			if token := model.ParseXAuthToken(s.Request); token != nil {
+				readonly = token.Valid && model.IsValidRole(model.GetClaimRole(model.GetTokenClaims(token)), []model.Role{
+					model.RoleReader,
+					model.RoleVisitor,
+				})
 			}
 		}
 
-		request := map[string]any{}
-		if err := gulu.JSON.UnmarshalJSON(msg, &request); err != nil {
+		if readonly {
 			result := util.NewResult()
 			result.Code = -1
-			result.Msg = "Bad Request"
-			responseData, _ := gulu.JSON.MarshalJSON(result)
-			s.Write(responseData)
-			return
-		}
-
-		if _, ok := s.Get("app"); !ok {
-			result := util.NewResult()
-			result.Code = -1
-			result.Msg = "Bad Request"
+			result.Msg = model.Conf.Language(34)
 			s.Write(result.Bytes())
 			return
 		}
+	}
 
-		cmdStr := request["cmd"].(string)
-		cmdId := request["reqId"].(float64)
-		param := request["param"].(map[string]any)
-		command := cmd.NewCommand(cmdStr, cmdId, param, s)
-		if nil == command {
-			result := util.NewResult()
-			result.Code = -1
-			result.Msg = "can not find command [" + cmdStr + "]"
-			s.Write(result.Bytes())
-			return
-		}
-		if !command.IsRead() {
-			readonly := util.ReadOnly
-			if !readonly {
-				if token := model.ParseXAuthToken(s.Request); token != nil {
-					readonly = token.Valid && model.IsValidRole(model.GetClaimRole(model.GetTokenClaims(token)), []model.Role{
-						model.RoleReader,
-						model.RoleVisitor,
-					})
-				}
-			}
+	end := time.Now()
+	logging.LogTracef("parse cmd [%s] consumed [%d]ms", command.Name(), end.Sub(start).Milliseconds())
 
-			if readonly {
-				result := util.NewResult()
-				result.Code = -1
-				result.Msg = model.Conf.Language(34)
-				s.Write(result.Bytes())
-				return
-			}
-		}
-
-		end := time.Now()
-		logging.LogTracef("parse cmd [%s] consumed [%d]ms", command.Name(), end.Sub(start).Milliseconds())
-
-		cmd.Exec(command)
-	})
+	cmd.Exec(command)
 }
 
 // encryptedBoxAwareWebdavFS 包装 webdav.Dir，拦截所有指向加密笔记本的访问。

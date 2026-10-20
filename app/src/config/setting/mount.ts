@@ -3,11 +3,41 @@ import {getSearchKeywordsLower, normalizeSearchText} from "../search/normalize";
 import {Constants} from "../../constants";
 import type {SettingSearchUnavailableItem, SettingTabMountContext} from "./builder";
 import {getSettingTab, type TSettingTab} from "./tabs";
+import {getSettingsOwnerApp} from "./windowContext";
+import {initSettingGroupCollapse, syncSettingGroupCollapse} from "./collapse";
+
+const deferredTabs = new Set<TSettingTab>();
+let watchingFocus = false;
+let watchingPointer = false;
+let pressedTarget: EventTarget;
+
+const refreshDeferredTabs = () => {
+    if (!deferredTabs.size) return;
+    setTimeout(() => {
+        const tabs = [...deferredTabs];
+        deferredTabs.clear();
+        tabs.forEach(tab => { void remountOpenSettingTab(tab); });
+    }, 0);
+};
+
+// 从按下到点击完成期间保留控件，避免失焦刷新移除本次点击的目标。
+export const watchSettingTabInteractions = () => {
+    if (watchingPointer) return;
+    watchingPointer = true;
+    document.addEventListener("pointerdown", event => { pressedTarget = event.target; }, true);
+    const endPointer = () => {
+        pressedTarget = undefined;
+        refreshDeferredTabs();
+    };
+    document.addEventListener("pointerup", endPointer, true);
+    document.addEventListener("pointercancel", endPointer, true);
+};
 
 /** 首次挂载：渲染全部注册项并执行 afterMount */
 export const mountSettingTab = async (tabId: string, root: HTMLElement) => {
     const {html, items} = buildGroupedItemsView(tabId);
     root.innerHTML = html;
+    initSettingGroupCollapse(root);
 
     for (const item of items) {
         await item.afterMount?.(root);
@@ -24,6 +54,20 @@ export const remountOpenSettingTab = async (tabId: TSettingTab) => {
     if (!root?.innerHTML) {
         return;
     }
+    if (root.contains(document.activeElement) || pressedTarget && root.contains(pressedTarget as Node) ||
+        root.querySelector(".config__view--show:not(.fn__none), .config-entry-visibility__view, [data-decision-profile-view]")) {
+        deferredTabs.add(tabId);
+        if (!watchingFocus) {
+            watchingFocus = true;
+            // 离开输入控件或关闭配置详情后再刷新，保留尚未提交的输入与草稿。
+            document.addEventListener("focusout", refreshDeferredTabs);
+            document.addEventListener("siyuan-entry-profile-closed", refreshDeferredTabs);
+            document.addEventListener("siyuan-decision-profile-closed", refreshDeferredTabs);
+            document.addEventListener("siyuan-setting-detail-closed", refreshDeferredTabs);
+        }
+        return;
+    }
+    deferredTabs.delete(tabId);
     const search: Partial<SettingTabMountContext> = {};
     const keywords = getSearchKeywordsLower(dialogElement);
     const tab = getSettingTab(tabId);
@@ -36,7 +80,7 @@ export const remountOpenSettingTab = async (tabId: TSettingTab) => {
     }
     // 重建和异步初始化配置项会改变内容高度，完成后恢复面板的滚动位置。
     const {scrollTop, scrollLeft} = root;
-    await tab.mount(root, search, undefined, true);
+    await tab.mount(root, search, getSettingsOwnerApp(), true);
     root.scrollTop = scrollTop;
     root.scrollLeft = scrollLeft;
 };
@@ -86,6 +130,7 @@ export const applySettingTabSearchVisibility = (
         // 标记每组最后一个未隐藏条目，不显示 border-bottom
         lastVisibleItem?.classList.add("config-item--last-visible");
     });
+    syncSettingGroupCollapse(root, true);
 };
 
 export const clearSettingTabSearch = (root: HTMLElement) => {
@@ -93,6 +138,7 @@ export const clearSettingTabSearch = (root: HTMLElement) => {
     root.querySelectorAll("[data-config-group-id], [data-config-item-id]").forEach((el) => {
         el.classList.remove("config-search-hidden", "config-item--last-visible");
     });
+    syncSettingGroupCollapse(root, false);
 };
 
 /** 面板型 SettingTab：根据全局搜索关键词切换 layout-tab-bar 子 Tab */

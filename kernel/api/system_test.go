@@ -193,10 +193,10 @@ func TestGetConfUILayoutByRole(t *testing.T) {
 
 	oldConf := model.Conf
 	model.Conf = model.NewAppConf()
-	model.Conf.Sync = conf.NewSync()
-	model.Conf.Sync.Enabled = true
-	model.Conf.Sync.Provider = 1
-	model.Conf.System = &conf.System{}
+	model.Conf.Sync.Store(conf.NewSync())
+	model.Conf.Sync.Load().Enabled = true
+	model.Conf.Sync.Load().Provider = 1
+	model.Conf.System.Store(&conf.System{})
 	uiLayout := conf.UILayout{
 		"layout": map[string]any{
 			"instance": "Layout",
@@ -217,7 +217,7 @@ func TestGetConfUILayoutByRole(t *testing.T) {
 			"data": []any{map[string]any{"title": "private-dock-title"}},
 		},
 	}
-	model.Conf.UILayout = &uiLayout
+	model.Conf.UILayout.Store(&uiLayout)
 	t.Cleanup(func() {
 		model.Conf = oldConf
 	})
@@ -287,6 +287,7 @@ func TestGetConfUILayoutByRole(t *testing.T) {
 func TestPreserveImportedAISecrets(t *testing.T) {
 	currentMCP := &conf.MCP{Servers: []conf.MCPServer{{ID: "server", Headers: map[string]string{"Authorization": "secret"}}}}
 	current := &conf.AI{
+		Web: &conf.AIWeb{APIKey: "web-key"},
 		Providers: []*conf.Provider{
 			{ID: "matching", APIKey: "local-key", BaseURL: "https://example.com", Protocol: "openai"},
 			{ID: "changed-endpoint", APIKey: "endpoint-key", BaseURL: "https://local.example.com"},
@@ -297,6 +298,7 @@ func TestPreserveImportedAISecrets(t *testing.T) {
 		MCP:       currentMCP,
 	}
 	imported := &conf.AI{
+		Web: &conf.AIWeb{SearchProvider: "exa", FetchProvider: "deepseek"},
 		Providers: []*conf.Provider{
 			{ID: "matching", BaseURL: "https://example.com", Protocol: "openai"},
 			{ID: "changed-endpoint", BaseURL: "https://imported.example.com"},
@@ -308,6 +310,14 @@ func TestPreserveImportedAISecrets(t *testing.T) {
 	}
 
 	preserveImportedAISecrets(imported, current)
+	if imported.Web.APIKey != "web-key" || imported.Web.FetchProvider != "deepseek" || imported.Web.SearchProvider != "exa" {
+		t.Fatal("web credential or independent provider selection lost on import")
+	}
+	providedWeb := &conf.AI{Web: &conf.AIWeb{APIKey: "provided-web-key"}}
+	preserveImportedAISecrets(providedWeb, current)
+	if providedWeb.Web.APIKey != "provided-web-key" {
+		t.Fatal("provided web credential was overwritten")
+	}
 
 	if imported.Providers[0].APIKey != "local-key" {
 		t.Fatalf("matching provider key = %q, want local key", imported.Providers[0].APIKey)

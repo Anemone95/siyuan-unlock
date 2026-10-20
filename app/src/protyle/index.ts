@@ -59,8 +59,8 @@ import {
     refreshSearchPathAfterRename,
 } from "../search/path";
 import {syncSearchConfigHPath} from "../search/config";
-import {sanitizeKernelHTML} from "../util/hostCapabilities";
 /// #endif
+import {sanitizeKernelHTML} from "../util/hostCapabilities";
 import {isSupportCSSHL} from "./render/searchMarkRender";
 import {renderAVAttribute} from "./render/av/blockAttr";
 import {setFoldById, zoomOut} from "../menus/protyle";
@@ -74,6 +74,7 @@ import {
 } from "./render/av/databaseRowRefresh";
 import {initEditorTabs} from "./wysiwyg/tabs";
 import {initListMindmaps} from "./render/listMindmap";
+import {initFoldedRender} from "./util/foldedRender";
 import {registerCustomBlockRoot} from "../plugin/customBlockRender";
 import {getTransactionOperations} from "../util/transactionOperations";
 import {
@@ -123,6 +124,7 @@ export class Protyle {
 
     public readonly version: string;
     public protyle: IProtyle;
+    private destroyed = false;
 
     /**
      * @param id 要挂载 Protyle 的元素或者元素 ID。
@@ -211,6 +213,7 @@ export class Protyle {
         this.protyle.undo = this.protyle.lite ? new LocalUndo() : new Undo();
         this.protyle.wysiwyg = new WYSIWYG(this.protyle);
         setAutoDirection(this.protyle.wysiwyg.element, window.siyuan.config.editor.autoDirection);
+        initFoldedRender(this.protyle);
         initEditorTabs(this.protyle);
         initListMindmaps(this.protyle);
         if (isProtyleCustomBlockRenderEnabled(this.protyle)) {
@@ -472,6 +475,7 @@ export class Protyle {
         // 多窗口/多端：用广播附带的撤销状态同步本地镜像
         if (data.context?.undoState) {
             syncMirrorFromBroadcast(data.context.undoState);
+            refreshUndoButtons(this.protyle);
         }
         const transactionOperations = getTransactionOperations(data.data);
         queueDatabaseRowRefreshForOperations(this.protyle.id, transactionOperations);
@@ -559,11 +563,15 @@ export class Protyle {
             getDocParam.notebook = this.protyle.notebookId;
         }
         fetchPost("/api/filetree/getDoc", getDocParam, getResponse => {
+            if (this.destroyed) {
+                return;
+            }
             onGet({
                 data: getResponse,
                 protyle: this.protyle,
                 action: mergedOptions.action,
                 scrollPosition: mergedOptions.scrollPosition,
+                isValid: () => !this.destroyed,
                 afterCB: () => {
                     this.afterOnGet(mergedOptions);
                 }
@@ -586,7 +594,8 @@ export class Protyle {
                 focus: false,
                 pushBackStack: false,
                 reload: false,
-                resize: false
+                resize: false,
+                outlineId: mergedOptions.action?.includes(Constants.CB_GET_OUTLINE) ? mergedOptions.blockId : undefined,
             });
             /// #endif
         }
@@ -664,6 +673,7 @@ export class Protyle {
 
     /** 销毁编辑器 */
     public destroy() {
+        this.destroyed = true;
         /// #if MOBILE
         unregisterMobileSecondaryEditor(this);
         /// #endif
@@ -726,15 +736,6 @@ export class Protyle {
             type,
             level: subType,
         });
-    }
-
-    /**
-     * @deprecated 将在 3.7.1 版本中移除。请改用 {@link updateTransactionElement}。
-     */
-    public updateTransaction(id: string, newHTML: string, html: string) {
-        const element = document.createElement("template");
-        element.innerHTML = newHTML;
-        updateTransaction(this.protyle, element.content.firstElementChild, html);
     }
 
     public updateTransactionElement(element: Element, oldHTML: string) {

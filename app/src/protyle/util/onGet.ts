@@ -8,6 +8,7 @@ import {resolveVisibleListMindmapBlock} from "../render/listMindmap/render";
 import {highlightRender} from "../render/highlightRender";
 import {blockRender} from "../render/blockRender";
 import {revealTabsForTarget} from "../render/tabsRender";
+import {getTabReadingID} from "../wysiwyg/tabsReading";
 import {bgFade, scrollCenter} from "../../util/highlightById";
 /// #if !MOBILE
 import {pushBack} from "../../util/backForward";
@@ -20,6 +21,8 @@ import {isMobile} from "../../util/functions";
 import {foldPassiveType} from "../wysiwyg/renderBacklink";
 import {showMessage} from "../../dialog/message";
 import {avRender} from "../render/av/render";
+import {clearReadonlyAVState} from "../render/av/readonlyState";
+import {refreshCalendarReadonly} from "../render/av/calendar/render";
 import {hideTooltip} from "../../dialog/tooltip";
 import {stickyRow} from "../render/av/row";
 import {getContenteditableElement} from "../wysiwyg/getBlock";
@@ -35,16 +38,19 @@ import {disabledWYSIWYG} from "./disabledWYSIWYG";
 import {getEmbeddedDocInfoResponse} from "./docInfo";
 import {updateWidgetCacheVersion} from "./widgetCache";
 import {normalizeHTMLAssetIFrameSources} from "../../asset/html";
+import {sanitizeInlineMemoContent} from "./inlineMemo";
 import {getSavedTabFocusTarget, hasFocusOffsets} from "./focusRestore";
 import {isAndroid, isIPhone, isPhablet} from "./compatibility";
 import {forEachPluginSubscriber} from "../../plugin/EventBusCore";
 import {disposeCustomBlocksInElement, setCustomBlockRootReady} from "../../plugin/customBlockRender";
 import {invalidateTrackedRanges, invalidateTrackedRangesInElement} from "./trackedRange";
 import {areProtylePluginExtensionsEnabled} from "../runtimeCapabilities";
+import {updateBackgroundActions} from "../header/backgroundActions";
 import {recordRestoredSpellcheckFocus} from "./spellcheckFocus";
 import {applyPublishFoldStates} from "./viewFold";
 /// #if MOBILE
 import {updateMobileTitleReadonly} from "./setEditMode";
+import {pauseMobileBarsScroll} from "../../mobile/util/mobileBars";
 /// #endif
 
 export const onGet = (options: {
@@ -55,6 +61,9 @@ export const onGet = (options: {
     updateReadonly?: boolean,
     scrollPosition?: ScrollLogicalPosition,
     afterCB?: () => void,
+    beforeAVRender?: () => void,
+    afterAVRender?: () => void | Promise<void>,
+    onAVRenderError?: () => void,
     dataDocType?: string,
     isValid?: () => boolean,
     focusAfterZoom?: boolean,
@@ -155,6 +164,9 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            beforeAVRender: options.beforeAVRender,
+            afterAVRender: options.afterAVRender,
+            onAVRenderError: options.onAVRenderError,
             isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
@@ -175,6 +187,9 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            beforeAVRender: options.beforeAVRender,
+            afterAVRender: options.afterAVRender,
+            onAVRenderError: options.onAVRenderError,
             isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
@@ -208,6 +223,9 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            beforeAVRender: options.beforeAVRender,
+            afterAVRender: options.afterAVRender,
+            onAVRenderError: options.onAVRenderError,
             isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
@@ -241,6 +259,9 @@ const setHTML = (options: {
     scrollPosition?: ScrollLogicalPosition,
     refreshHeadingNumbers?: boolean,
     afterCB?: () => void,
+    beforeAVRender?: () => void,
+    afterAVRender?: () => void | Promise<void>,
+    onAVRenderError?: () => void,
     focusAfterZoom?: boolean,
     suppressFocus?: boolean,
     isValid?: () => boolean,
@@ -264,7 +285,7 @@ const setHTML = (options: {
     doc.querySelectorAll("[data-inline-memo-content]").forEach(item => {
         const content = item.getAttribute("data-inline-memo-content");
         if (content) {
-            item.setAttribute("data-inline-memo-content", window.DOMPurify.sanitize(content));
+            item.setAttribute("data-inline-memo-content", sanitizeInlineMemoContent(content));
         }
     });
     normalizeHTMLAssetIFrameSources(doc);
@@ -381,7 +402,18 @@ const setHTML = (options: {
     }
     processRender(protyle.wysiwyg.element);
     highlightRender(protyle.wysiwyg.element);
-    avRender(protyle.wysiwyg.element, protyle);
+    options.beforeAVRender?.();
+    const avRendering = avRender(protyle.wysiwyg.element, protyle);
+    if (options.afterAVRender) {
+        void avRendering.then(() => {
+            if (!options.isValid || options.isValid()) {
+                return options.afterAVRender();
+            }
+        }).catch(error => {
+            console.error(error);
+            options.onAVRenderError?.();
+        });
+    }
     blockRender(protyle, protyle.wysiwyg.element);
     renderHeadingNumbers(protyle);
     if (options.refreshHeadingNumbers) {
@@ -403,11 +435,12 @@ const setHTML = (options: {
     if (options.isSyncing) {
         disabledForeverProtyle(protyle);
     } else {
-        if (protyle.breadcrumb) {
+        // 移动端横屏的空白区域承载顶部栏控件，同步提示仅在桌面端清理。
+        if (protyle.breadcrumb && !isMobile()) {
             protyle.breadcrumb.element.nextElementSibling.textContent = "";
         }
         if (protyle.element.hasAttribute("disabled-forever")) {
-            if (protyle.wysiwyg.element.getAttribute("custom-sy-readonly") !== "true") {
+            if (protyle.wysiwyg.element.getAttribute(Constants.CUSTOM_SY_READONLY) !== "true") {
                 protyle.disabled = false;
             }
             protyle.element.removeAttribute("disabled-forever");
@@ -452,14 +485,7 @@ const setHTML = (options: {
         return;
     }
 
-    /// #if MOBILE
-    if (protyle.background) {
-        protyle.background.element.classList.toggle(
-            "protyle-background--mobileshow",
-            !options.action.includes(Constants.CB_GET_ALL)
-        );
-    }
-    /// #endif
+    updateBackgroundActions(protyle);
 
     if (protyle.options.render.breadcrumb) {
         protyle.breadcrumb.toggleExit(!options.action.includes(Constants.CB_GET_ALL));
@@ -516,9 +542,19 @@ export const disabledForeverProtyle = (protyle: IProtyle) => {
 
 /** 禁用编辑器 */
 export const disabledProtyle = (protyle: IProtyle) => {
+    const wasDisabled = protyle.disabled;
+    /// #if MOBILE
+    if (!wasDisabled && window.siyuan.mobile.editor?.protyle === protyle) {
+        pauseMobileBarsScroll();
+    }
+    /// #endif
     window.siyuan.menus.menu.remove();
     hideElements(["gutter", "toolbar", "select", "hint", "util"], protyle);
     protyle.disabled = true;
+    if (!wasDisabled) {
+        protyle.wysiwyg.tableControl?.clear();
+        protyle.wysiwyg.element.querySelectorAll(".table__select").forEach(item => item.removeAttribute("style"));
+    }
     protyle.databaseAttributePanel?.updateReadonly();
     if (protyle.title && protyle.title.editElement) {
         protyle.title.editElement.setAttribute("contenteditable", "false");
@@ -531,6 +567,9 @@ export const disabledProtyle = (protyle: IProtyle) => {
         protyle.background.element.classList.remove("protyle-background--enable");
     }
     disabledWYSIWYG(protyle.wysiwyg.element);
+    if (!wasDisabled) {
+        refreshCalendarReadonly(protyle);
+    }
     if (protyle.breadcrumb) {
         const readonlyButton = protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]');
         readonlyButton.querySelector("use").setAttribute("xlink:href", "#iconLock");
@@ -552,7 +591,17 @@ export const enableProtyle = (protyle: IProtyle) => {
     if (protyle.element.getAttribute("disabled-forever") === "true") {
         return;
     }
+    const wasDisabled = protyle.disabled;
+    /// #if MOBILE
+    if (wasDisabled && window.siyuan.mobile.editor?.protyle === protyle) {
+        pauseMobileBarsScroll();
+    }
+    /// #endif
     protyle.disabled = false;
+    if (wasDisabled) {
+        protyle.wysiwyg.tableControl?.clear();
+        protyle.wysiwyg.element.querySelectorAll(".table__select").forEach(item => item.removeAttribute("style"));
+    }
     protyle.databaseAttributePanel?.updateReadonly();
     if (isMobile()) {
         /// #if MOBILE
@@ -587,6 +636,14 @@ export const enableProtyle = (protyle: IProtyle) => {
     protyle.wysiwyg.element.querySelectorAll(".av").forEach((item: HTMLElement) => {
         stickyRow(item, protyle.contentElement, "all");
     });
+    if (wasDisabled) {
+        protyle.wysiwyg.element.querySelectorAll<HTMLElement>(".av").forEach(item => {
+            if (clearReadonlyAVState(item)) {
+                void avRender(item, protyle);
+            }
+        });
+        refreshCalendarReadonly(protyle);
+    }
     if (protyle.breadcrumb) {
         const readonlyButton = protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]');
         readonlyButton.querySelector("use").setAttribute("xlink:href", "#iconUnlock");
@@ -665,7 +722,7 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     const hasScrollTop = scrollAttr && typeof scrollAttr.scrollTop === "number";
     const savedFocusElement = focusElement;
     if (hasScrollTop && scrollAttr.focusId && !action.includes(Constants.CB_GET_HL)) {
-        focusElement = getSavedTabFocusTarget(focusElement);
+        focusElement = getSavedTabFocusTarget(focusElement, tabs => getTabReadingID(protyle, tabs as HTMLElement));
     }
     if (action.includes(Constants.CB_GET_HL)) {
         preventScroll(protyle); // 搜索页签滚动会导致再次请求

@@ -1,3 +1,4 @@
+import {escapeHtmlTextAndAttr} from "../util/escape";
 import {Model} from "../layout/Model";
 import {Tab} from "../layout/Tab";
 import {Constants} from "../constants";
@@ -12,7 +13,7 @@ import {webViewerLoad} from "./pdf/viewer";
 import {onPageNumberChanged} from "./pdf/app";
 /// #endif
 import {fetchPost} from "../util/fetch";
-import {setStorageVal} from "../protyle/util/compatibility";
+import {bindPdfTheme} from "./pdfViewer";
 import type {App} from "../index";
 import {clearOBG} from "../layout/dock/util";
 import {getDisplayName} from "../util/pathName";
@@ -110,7 +111,7 @@ export class Asset extends Model {
         }
         const type = this.path.substr(this.path.lastIndexOf(".")).toLowerCase().split("?")[0];
         // 对资源路径进行 HTML 转义后再拼入 src 属性，避免路径中包含 " 等字符导致属性逃逸引发 XSS
-        const src = Lute.EscapeHTMLStr(this.path.startsWith("file") ? this.path : document.getElementById("baseURL").getAttribute("href") + "/" + this.path);
+        const src = escapeHtmlTextAndAttr(this.path.startsWith("file") ? this.path : document.getElementById("baseURL").getAttribute("href") + "/" + this.path);
         if (Constants.SIYUAN_ASSETS_IMAGE.includes(type)) {
             this.element.innerHTML = `<div class="asset"><img src="${src}"></div>`;
         } else if (Constants.SIYUAN_ASSETS_AUDIO.includes(type)) {
@@ -120,40 +121,7 @@ export class Asset extends Model {
         } else if (type === ".pdf") {
             /// #if !MOBILE
             this.element.innerHTML = getPdfViewerHTML();
-            const localPDF = window.siyuan.storage[Constants.LOCAL_PDFTHEME];
-            const pdfTheme = window.siyuan.config.appearance.mode === 0 ? localPDF.light : localPDF.dark;
-            const darkElement = this.element.querySelector("#pdfDark");
-            const lightElement = this.element.querySelector("#pdfLight");
-            if (pdfTheme === "dark") {
-                this.element.firstElementChild.classList.add("pdf__outer--dark");
-                lightElement.classList.remove("toggled");
-                darkElement.classList.add("toggled");
-            } else {
-                lightElement.classList.add("toggled");
-                darkElement.classList.remove("toggled");
-            }
-            lightElement.addEventListener("click", () => {
-                if (window.siyuan.config.appearance.mode === 0) {
-                    localPDF.light = "light";
-                } else {
-                    localPDF.dark = "light";
-                }
-                this.element.firstElementChild.classList.remove("pdf__outer--dark");
-                lightElement.classList.add("toggled");
-                darkElement.classList.remove("toggled");
-                setStorageVal(Constants.LOCAL_PDFTHEME, window.siyuan.storage[Constants.LOCAL_PDFTHEME]);
-            });
-            darkElement.addEventListener("click", () => {
-                if (window.siyuan.config.appearance.mode === 0) {
-                    localPDF.light = "dark";
-                } else {
-                    localPDF.dark = "dark";
-                }
-                this.element.firstElementChild.classList.add("pdf__outer--dark");
-                lightElement.classList.remove("toggled");
-                darkElement.classList.add("toggled");
-                setStorageVal(Constants.LOCAL_PDFTHEME, window.siyuan.storage[Constants.LOCAL_PDFTHEME]);
-            });
+            bindPdfTheme(this.element);
             // 初始化完成后需等待页签是否显示设置完成，才可以判断 pdf 是否能进行渲染
             this.pdfLoadState.setTimeout(window.setTimeout(() => {
                 if (!this.pdfLoadState.consumeTimeout() || !this.element.isConnected) {
@@ -161,6 +129,9 @@ export class Asset extends Model {
                 }
                 if (this.element.clientWidth === 0) {
                     const observer = new MutationObserver(() => {
+                        if (!this.element.isConnected || this.element.clientWidth === 0) {
+                            return;
+                        }
                         if (!this.pdfLoadState.consumeObserver()) {
                             return;
                         }

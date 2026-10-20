@@ -96,7 +96,7 @@ An encrypted notebook is an island; some features are unsupported because of the
 
 - Asset file rename: Encrypted-notebook asset filenames are already desensitized to `uuid-blockID.ext`; the disk filename participates in AAD, so renaming requires re-enveloping the whole asset
 
-- Unused asset cleanup: Encrypted-notebook assets are excluded from global unused-asset cleanup (island, assets do not cross boundaries), preventing false deletion when locked and document references cannot be scanned
+- Unused asset cleanup: Encrypted-notebook assets remain excluded from global cleanup. An unlocked notebook has its own Document panel - Notebook - More - Clean up unreferenced assets entry, with scanning and deletion restricted to that notebook
 
 - Unused database cleanup: Encrypted-notebook database definitions are excluded from global unused-database cleanup, preventing false deletion when locked and reference relationships cannot be confirmed
 
@@ -461,7 +461,9 @@ The global configuration lock is acquired before any notebook lifecycle lock. An
 
 Text recognition (OCR) is not supported for assets in encrypted notebooks, regardless of lock state. Manual recognition returns a localized "unsupported" message, and automatic recognition skips encrypted-notebook assets. No OCR text may be generated for these assets or written to the global OCR store or search index.
 
-Unsupported publishing, flashcards, bookmarks, tags, asset rename, unused-asset cleanup, and unused-database cleanup must be handled uniformly by the frontend, HTTP API, plugin API, MCP, and import paths: return an explicit "unsupported" error for encrypted-notebook targets and create no global index, global attribute, or deferred task. Existing legacy data must not be loaded, aggregated, or written back. Publish authorization is independent of lock state and takes precedence over `publishAccess.json`; existing publish configuration cannot make an encrypted notebook visible again. Error codes and localized messages remain stable for callers.
+Unsupported publishing, flashcards, bookmarks, tags, asset rename, global unused-asset cleanup, and unused-database cleanup must be handled uniformly by the frontend, HTTP API, plugin API, MCP, and import paths: return an explicit "unsupported" error for encrypted-notebook targets and create no global index, global attribute, or deferred task. Existing legacy data must not be loaded, aggregated, or written back. Publish authorization is independent of lock state and takes precedence over `publishAccess.json`; existing publish configuration cannot make an encrypted notebook visible again. Error codes and localized messages remain stable for callers.
+
+The dedicated `/api/asset/getUnusedEncryptedBoxAssets` and `/api/asset/removeUnusedEncryptedBoxAssets` endpoints require an explicit unlocked encrypted notebook. The scan authenticates all notebook documents and database definitions, includes static agent-session and tool-attachment references, and protects a referenced PDF's `.sya` companion. Any read, authentication, parsing, or traversal failure aborts the scan. Deletion revalidates only the confirmed candidates while coordinating notebook admission, editing transactions, and synchronization; active competing requests require a retry. Ciphertext is authenticated and completely backed up before removal. Failure restores source files; uncommitted cleanup journals under the workspace's `.siyuan/asset-cleanup/` are recovered before startup synchronization. Historical ciphertext keeps its original format and basename. The existing global history index may store desensitized filenames, paths, and timestamps, including after locking, but never original filenames or plaintext contents. No global asset-content index, OCR data, or plaintext cache is populated.
 
 A rejection must state the concrete reason and the available remedy, and one generic message must not cover unrelated reasons: importing a `.sy.zip` that contains flashcards must name the affected documents or deck and point to removing the flashcards in the source notebook or importing into a regular notebook; a locked notebook must ask for unlocking; a cross-boundary move or reference must explain that an encrypted notebook is an isolated space instead of returning "operation not supported".
 
@@ -480,6 +482,8 @@ Native mobile save flows must call `AcquireExportFile` to obtain a lease contain
 ## Compatibility and recovery
 
 ### Archiving notebooks that cannot be unlocked
+
+`keys/persisted-conf.json` contains the process's most recently generated persistence form of the notebook encryption configuration, captured before the synchronous configuration write. Archive creation reads this in-memory snapshot instead of reopening `conf/conf.json`; if no persistence form has been generated, it uses the current encryption configuration. The key name and recovery readers remain compatible with existing version 1 archives. Existing backup and password-migration candidates are retained and authenticated during recovery.
 
 Encrypted notebook archives use the separate `siyuan-encrypted-notebooks` container, version 1. Existing document, asset, attribute-view, AAD, and key-envelope formats remain unchanged. Archives include the selected notebook directories, related local history, their files from local repository snapshots, and available global encryption configuration, key backups, and password-migration records. Deferred assets and missing local snapshot chunks must be completed before removal can be committed. File lists, sizes, and SHA-256 digests verify copying completeness, not ciphertext authentication or guaranteed recoverability.
 

@@ -6,7 +6,7 @@
 		"id": "20260612192417-fb4ueux",
 		"title": "コマンドラインインターフェース",
 		"type": "doc",
-		"updated": "20260914195107"
+		"updated": "20261016112115"
 	},
 	"Children": [
 		{
@@ -67,7 +67,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260618123956-rq5ibw3",
-				"updated": "20260618123956"
+				"updated": "20261006133358"
 			},
 			"Children": [
 				{
@@ -114,7 +114,7 @@
 			"ListData": {},
 			"Properties": {
 				"id": "20260618123956-6xjq4tq",
-				"updated": "20260618123956"
+				"updated": "20261006133358"
 			},
 			"Children": [
 				{
@@ -126,7 +126,7 @@
 					},
 					"Properties": {
 						"id": "20260618123956-69ywnmy",
-						"updated": "20260618123956"
+						"updated": "20261006133358"
 					},
 					"Children": [
 						{
@@ -134,7 +134,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260618123956-8m4ikg3",
-								"updated": "20260618123956"
+								"updated": "20261006133358"
 							},
 							"Children": [
 								{
@@ -166,25 +166,25 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "。Microsoft Store 版は MSIX サンドボックスで実行されるため "
+									"Data": "。Microsoft Store 版（3.8.7 以降）は Windows 10 1607（ビルド 14393）以降で "
 								},
 								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "code",
-									"TextMarkTextContent": "PATH"
+									"TextMarkTextContent": "siyuan.exe"
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ を自動的に変更できません。"
+									"Data": "​ アプリ実行エイリアスを登録します。インストールまたは更新後、新しいターミナルを開いて "
 								},
 								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "code",
-									"TextMarkTextContent": "siyuan.cmd"
+									"TextMarkTextContent": "siyuan --help"
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ シム（一回のデプロイでストア更新後も有効）を配置できます"
+									"Data": "​ を実行します"
 								}
 							]
 						},
@@ -194,7 +194,7 @@
 							"IsFencedCodeBlock": true,
 							"Properties": {
 								"id": "20260708123000-jastore1",
-								"updated": "20260708123000"
+								"updated": "20261006133358"
 							},
 							"Children": [
 								{
@@ -207,7 +207,7 @@
 								},
 								{
 									"Type": "NodeCodeBlockCode",
-									"Data": "# Microsoft Store 版のみ — PowerShell で一度実行\n$shimDir = \"$env:LOCALAPPDATA\\Microsoft\\WindowsApps\"   # デフォルトで PATH に含まれる\n@(\n    '@echo off'\n    'setlocal'\n    'set \"ROOT=\"'\n    'for /f \"delims=\" %%i in (''powershell -NoProfile -Command \"(Get-AppxPackage *SiYuan*).InstallLocation\"'') do set \"ROOT=%%i\"'\n    'if not defined ROOT goto :noshim'\n    '\"%ROOT%\\app\\resources\\kernel\\SiYuan-Kernel.exe\" %*'\n    'exit /b %ERRORLEVEL%'\n    ':noshim'\n    '1>&2 echo siyuan: Microsoft Store 版が見つかりません'\n    'exit /b 1'\n) | Set-Content \"$shimDir\\siyuan.cmd\"\n"
+									"Data": "siyuan --help\n\n# 実際に使用されるコマンドを確認\nGet-Command siyuan -All\nwhere.exe siyuan\n"
 								},
 								{
 									"Type": "NodeCodeBlockFenceCloseMarker",
@@ -216,16 +216,75 @@
 							]
 						},
 						{
-							"ID": "20260708130000-jauninst",
+							"ID": "20261006133358-x1oqbhv",
 							"Type": "NodeParagraph",
 							"Properties": {
-								"id": "20260708130000-jauninst",
-								"updated": "20260708130000"
+								"id": "20261006133358-x1oqbhv",
+								"updated": "20261006133358"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "アンインストール時に削除する場合: "
+									"Data": "コマンドが見つからない場合は、Windows で SiYuan のアプリ実行エイリアスが有効になっていることと、"
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "%LOCALAPPDATA%\\Microsoft\\WindowsApps"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " が "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "PATH"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " に含まれていることを確認してください。上記のコマンドで解決先を確認できます。複数の SiYuan エディションのインストールや "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "PATH"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " の順序により、別の実行ファイルが選択される場合があります"
+								}
+							]
+						},
+						{
+							"ID": "20260708130000-jauninst",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260708130000-jauninst",
+								"updated": "20261006133358"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "以前に "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "siyuan.cmd"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " シムを作成した場合は、まず "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "& \"$env:LOCALAPPDATA\\Microsoft\\WindowsApps\\siyuan.exe\" --help"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " でストア版のエイリアスが動作することを確認し、必要に応じてシムを削除してください："
 								},
 								{
 									"Type": "NodeTextMark",
@@ -364,7 +423,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260618123956-eth7jbg",
-				"updated": "20260809232000"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -385,7 +444,7 @@
 			"Properties": {
 				"colgroup": "|||",
 				"id": "20260618123956-gr100ax",
-				"updated": "20260809232000"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -487,17 +546,13 @@
 							"Data": "td",
 							"Children": [
 								{
-									"Type": "NodeText",
-									"Data": "環境変数 "
-								},
-								{
 									"Type": "NodeTextMark",
 									"TextMarkType": "code",
 									"TextMarkTextContent": "SIYUAN_WORKSPACE_PATH"
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​、または登録済みワークスペース、または "
+									"Data": "、なければ "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -665,7 +720,7 @@
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "ドライランモード、パラメータを検証するだけで実行しない"
+									"Data": "対応する変更を実行せずに予行する"
 								}
 							]
 						}
@@ -718,8 +773,9 @@
 							"Data": "td",
 							"Children": [
 								{
-									"Type": "NodeText",
-									"Data": "設定値"
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "warn"
 								}
 							]
 						},
@@ -742,7 +798,7 @@
 			"Type": "NodeBlockquote",
 			"Properties": {
 				"id": "20260618123956-9jxhu0w",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -754,9 +810,60 @@
 					"Type": "NodeParagraph",
 					"Properties": {
 						"id": "20260618123956-7gd9h1c",
-						"updated": "20260618123956"
+						"updated": "20261016112115"
 					},
 					"Children": [
+						{
+							"Type": "NodeText",
+							"Data": "通常の単発コマンドをスクリプトで使う際は、意図しないデータを選ばないよう常に "
+						},
+						{
+							"Type": "NodeTextMark",
+							"TextMarkType": "code",
+							"TextMarkTextContent": "--workspace"
+						},
+						{
+							"Type": "NodeText",
+							"Data": " を指定してください。"
+						},
+						{
+							"Type": "NodeTextMark",
+							"TextMarkType": "code",
+							"TextMarkTextContent": "workspace info"
+						},
+						{
+							"Type": "NodeText",
+							"Data": " は最後に登録されたワークスペースにフォールバックする場合があります。"
+						},
+						{
+							"Type": "NodeTextMark",
+							"TextMarkType": "code",
+							"TextMarkTextContent": "serve"
+						},
+						{
+							"Type": "NodeText",
+							"Data": " は"
+						},
+						{
+							"Type": "NodeTextMark",
+							"TextMarkType": "block-ref",
+							"TextMarkBlockRefID": "20240530101000-xq26o73",
+							"TextMarkBlockRefSubtype": "s",
+							"TextMarkTextContent": "カーネルパラメータ"
+						},
+						{
+							"Type": "NodeText",
+							"Data": "の規則に従い、"
+						},
+						{
+							"Type": "NodeTextMark",
+							"TextMarkType": "code",
+							"TextMarkTextContent": "--log-level"
+						},
+						{
+							"Type": "NodeText",
+							"Data": " を指定しなければ設定済みログレベルを使用します。"
+						},
 						{
 							"Type": "NodeText",
 							"Data": "​"
@@ -768,7 +875,7 @@
 						},
 						{
 							"Type": "NodeText",
-							"Data": "​ はスクリプト処理に適しています。"
+							"Data": " は対応するコマンドだけで使用してください。"
 						},
 						{
 							"Type": "NodeTextMark",
@@ -777,16 +884,7 @@
 						},
 						{
 							"Type": "NodeText",
-							"Data": "​ はすべての変更系操作に適用でき、"
-						},
-						{
-							"Type": "NodeTextMark",
-							"TextMarkType": "code",
-							"TextMarkTextContent": "[dry-run] Would..."
-						},
-						{
-							"Type": "NodeText",
-							"Data": "​ という出力を返します。"
+							"Data": " は対応する変更の予行であり、実行時のすべての検証に通る保証ではありません。"
 						}
 					]
 				}
@@ -1218,7 +1316,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260618123956-4czjzvh",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1233,7 +1331,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-2wg604m",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1247,9 +1345,27 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260618123956-fgx29ux",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "search"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " と "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "sql"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " は "
+				},
 				{
 					"Type": "NodeText",
 					"Data": "​"
@@ -1261,25 +1377,25 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ で JSON を出力し、スクリプトで解析します。"
+					"Data": " による JSON 出力に対応します。コマンドごとの出力仕様を確認してください。グローバル形式が JSON でも、"
 				},
 				{
 					"Type": "NodeTextMark",
 					"TextMarkType": "code",
-					"TextMarkTextContent": "search"
+					"TextMarkTextContent": "file list"
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​、"
+					"Data": " は表、"
 				},
 				{
 					"Type": "NodeTextMark",
 					"TextMarkType": "code",
-					"TextMarkTextContent": "sql"
+					"TextMarkTextContent": "file read"
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ などすべての検索コマンドが JSON 出力に対応しています。"
+					"Data": " は元の内容を出力します。"
 				}
 			]
 		},
@@ -1289,7 +1405,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-zvhpvbw",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1303,13 +1419,9 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260618123956-x2ausv7",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "変更・削除操作では、まず "
-				},
 				{
 					"Type": "NodeTextMark",
 					"TextMarkType": "code",
@@ -1317,7 +1429,7 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ でパラメータを検証し、期待通りに "
+					"Data": " に対応する変更・削除操作は、先に予行して "
 				},
 				{
 					"Type": "NodeTextMark",
@@ -1326,7 +1438,7 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ と出力されることを確認してから、このフラグを外して実際に実行します。"
+					"Data": " の内容を確認してください。実行時のすべての検証は行われないため、フラグを外す前にワークスペースとバックアップも確認します。"
 				}
 			]
 		},
@@ -1430,7 +1542,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-ilbecsf",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1444,7 +1556,7 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260618123956-p16ty8p",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1458,7 +1570,7 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ でチェックポイントとしてスナップショットを作成。"
+					"Data": " でチェックポイント用のスナップショットを作成します。"
 				},
 				{
 					"Type": "NodeTextMark",
@@ -1467,7 +1579,43 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ でワークスペース全体のバックアップをエクスポートします。"
+					"Data": " がエクスポートするのは "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "data"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " ディレクトリ全体だけで、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "conf"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "history"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "repo"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " などは含みません。ワークスペース全体のバックアップではなく、暗号化ノートブックがひとつでもあると実行を拒否します。"
 				}
 			]
 		},
@@ -1477,7 +1625,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260618123956-ik70oxc",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1499,7 +1647,7 @@
 			},
 			"Properties": {
 				"id": "20260618123956-prj5zdo",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -1513,7 +1661,7 @@
 					},
 					"Properties": {
 						"id": "20260618123956-axfx9zn",
-						"updated": "20260618123956"
+						"updated": "20261016112115"
 					},
 					"Children": [
 						{
@@ -1521,12 +1669,12 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260618123956-pxr4ts8",
-								"updated": "20260618123956"
+								"updated": "20261016112115"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "変更・削除系の操作では、まず "
+									"Data": "対応する操作では "
 								},
 								{
 									"Type": "NodeTextMark",
@@ -1535,7 +1683,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ でパラメータの正当性を検証することを推奨します"
+									"Data": " で変更を予行してください。予行の成功は実行の成功を保証しません"
 								}
 							]
 						}
@@ -1570,6 +1718,92 @@
 							]
 						}
 					]
+				},
+				{
+					"ID": "20261016112115-gcfa83o",
+					"Type": "NodeListItem",
+					"Properties": {
+						"id": "20261016112115-gcfa83o",
+						"updated": "20261016112115"
+					},
+					"ListData": {
+						"Typ": 1,
+						"Delimiter": 46,
+						"Marker": "Mi4=",
+						"Num": 2
+					},
+					"Children": [
+						{
+							"ID": "20261016112115-duwkghp",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20261016112115-duwkghp",
+								"updated": "20261016112115"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "単発 CLI コマンドは、アプリでロック解除済みでも、暗号化ノートブック、そのブロック、元ファイル、履歴、スナップショットファイルの内容を扱えません。ワークスペースに暗号化ノートブックがひとつでもあると "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "code",
+									"TextMarkTextContent": "export data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " は拒否されます。アプリの "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "設定"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "アプリ"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "データ"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "エクスポート Data"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " でデータアーカイブを出力し、"
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "block-ref",
+									"TextMarkBlockRefID": "20260907120000-cryja01",
+									"TextMarkBlockRefSubtype": "s",
+									"TextMarkTextContent": "暗号化ノートブック"
+								},
+								{
+									"Type": "NodeText",
+									"Data": "の手順で復元してください。対応するキーバックアップとマスターパスワードは別々に保管してください"
+								}
+							]
+						}
+					]
 				}
 			]
 		},
@@ -1579,7 +1813,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260618123956-poyqeb5",
-				"updated": "20260914195107"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -4359,7 +4593,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-qya0v4w",
-				"updated": "20260913020024"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -4373,12 +4607,32 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260618123956-jonqu2i",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
 					"Type": "NodeText",
-					"Data": "全文検索です。ノートブック、パス、ブロックタイプによる絞り込み、複数の検索方法やソート方式に対応します。"
+					"Data": "ノートブック、パス、ブロックタイプで絞り込み、複数の検索方法と並び順を使用できます。"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "--method 4"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " は意味検索で、有効な埋め込みモデルと準備済みの埋め込みインデックスが必要です。先にアプリで"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "block-ref",
+					"TextMarkBlockRefID": "20260804171007-semnt04",
+					"TextMarkBlockRefSubtype": "s",
+					"TextMarkTextContent": "意味検索"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "の設定とインデックス作成を行ってください。アセット検索は方法 0–3 のみ対応します。"
 				}
 			]
 		},
@@ -4392,7 +4646,7 @@
 			"Properties": {
 				"colgroup": "|",
 				"id": "20260618123956-ioyvoyu",
-				"updated": "20260913020024"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -4676,7 +4930,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ フジー"
+									"Data": "​ 意味検索"
 								}
 							]
 						}
@@ -5433,7 +5687,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-46i820c",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -5447,12 +5701,12 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260618123956-71b6fd3",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
 					"Type": "NodeText",
-					"Data": "ドキュメントを各種形式でエクスポートします。"
+					"Data": "ドキュメントを各種形式にエクスポートします。"
 				},
 				{
 					"Type": "NodeTextMark",
@@ -5461,7 +5715,36 @@
 				},
 				{
 					"Type": "NodeText",
-					"Data": "​ で出力ファイルのパスを指定します。"
+					"Data": " で出力ファイルを指定します。"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "export data"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " はワークスペースの "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "data"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " ディレクトリだけをアーカイブし、暗号化ノートブックがひとつでもあると拒否されます。対応するアプリ内のバックアップと復元は"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "block-ref",
+					"TextMarkBlockRefID": "20260907120000-cryja01",
+					"TextMarkBlockRefSubtype": "s",
+					"TextMarkTextContent": "暗号化ノートブック"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "を参照してください。"
 				}
 			]
 		},
@@ -5476,7 +5759,7 @@
 			"Properties": {
 				"colgroup": "||",
 				"id": "20260618123956-npz2gkj",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -5947,7 +6230,7 @@
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "完全データバックアップをエクスポート"
+									"Data": "data ディレクトリだけをエクスポート。暗号化ノートブックがある場合は使用不可"
 								}
 							]
 						}
@@ -5961,7 +6244,7 @@
 			"IsFencedCodeBlock": true,
 			"Properties": {
 				"id": "20260618123956-k0ys8wj",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -5974,7 +6257,7 @@
 				},
 				{
 					"Type": "NodeCodeBlockCode",
-					"Data": "siyuan export md --id doc-id\nsiyuan export md --id doc-id --output ./output.md\nsiyuan export html --id doc-id --output ./output.html\nsiyuan export preview --id doc-id --output ./preview.html\nsiyuan export docx --id doc-id --output ./output.docx\nsiyuan export sy --id doc-id --output ./backup.sy.zip\nsiyuan export md-zip --id doc-id --output ./archive.zip\nsiyuan export data --output ./full-backup.zip\n"
+					"Data": "siyuan export md --id doc-id\nsiyuan export md --id doc-id --output ./output.md\nsiyuan export html --id doc-id --output ./output.html\nsiyuan export preview --id doc-id --output ./preview.html\nsiyuan export docx --id doc-id --output ./output.docx\nsiyuan export sy --id doc-id --output ./backup.sy.zip\nsiyuan export md-zip --id doc-id --output ./archive.zip\nsiyuan export data --output ./data-backup.zip\n"
 				},
 				{
 					"Type": "NodeCodeBlockFenceCloseMarker",
@@ -5988,7 +6271,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260618123956-z9ut5gs",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -6022,7 +6305,7 @@
 			"Properties": {
 				"colgroup": "||",
 				"id": "20260618123956-acqpzkl",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -6365,7 +6648,7 @@
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "完全データバックアップをインポート"
+									"Data": "data ディレクトリのバックアップをインポート"
 								}
 							]
 						}
@@ -6379,7 +6662,7 @@
 			"IsFencedCodeBlock": true,
 			"Properties": {
 				"id": "20260618123956-1q1kit4",
-				"updated": "20260618123956"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -6392,7 +6675,7 @@
 				},
 				{
 					"Type": "NodeCodeBlockCode",
-					"Data": "siyuan import md --file ./notes --notebook notebook-id\nsiyuan import md --file ./doc.md --notebook notebook-id --hpath \"/インポートディレクトリ\"\nsiyuan import sy --file ./backup.sy.zip --notebook notebook-id\nsiyuan import data --file ./full-backup.zip\n"
+					"Data": "siyuan import md --file ./notes --notebook notebook-id\nsiyuan import md --file ./doc.md --notebook notebook-id --hpath \"/インポートディレクトリ\"\nsiyuan import sy --file ./backup.sy.zip --notebook notebook-id\nsiyuan import data --file ./data-backup.zip\n"
 				},
 				{
 					"Type": "NodeCodeBlockFenceCloseMarker",
@@ -12577,7 +12860,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260809180000-e111750",
-				"updated": "20260914195107"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -12591,7 +12874,7 @@
 			"Type": "NodeParagraph",
 			"Properties": {
 				"id": "20260809180000-93036f1",
-				"updated": "20260914195107"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -12601,11 +12884,38 @@
 				{
 					"Type": "NodeTextMark",
 					"TextMarkType": "code",
+					"TextMarkTextContent": "--workspace"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " はワークスペースのデータディレクトリ、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
 					"TextMarkTextContent": "--wd"
 				},
 				{
 					"Type": "NodeText",
-					"Data": " で作業ディレクトリ、"
+					"Data": " は "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "appearance/"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " と "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "stage/"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " を含むプログラムのリソースディレクトリを指定します。後者は通常、自動検出されます。"
 				},
 				{
 					"Type": "NodeTextMark",
@@ -12696,7 +13006,7 @@
 			"IsFencedCodeBlock": true,
 			"Properties": {
 				"id": "20260809180000-c7d60a1",
-				"updated": "20260809232000"
+				"updated": "20261016112115"
 			},
 			"Children": [
 				{
@@ -12709,7 +13019,7 @@
 				},
 				{
 					"Type": "NodeCodeBlockCode",
-					"Data": "siyuan serve --wd /path/to/workspace --port 6806\nsiyuan serve --wd /path/to/workspace --port 6806 --readonly true\nsiyuan serve --wd /path/to/workspace --port 6806 --accessAuthCode \"secret\" --lang ja --ssl\n"
+					"Data": "siyuan serve --workspace /path/to/workspace --port 6806\nsiyuan serve --workspace /path/to/workspace --port 6806 --readonly true\nsiyuan serve --workspace /path/to/workspace --port 6806 --wd /path/to/resources --lang ja --ssl\n"
 				},
 				{
 					"Type": "NodeCodeBlockFenceCloseMarker",

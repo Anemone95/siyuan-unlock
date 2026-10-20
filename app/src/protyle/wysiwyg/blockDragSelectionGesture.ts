@@ -14,7 +14,7 @@ interface IBlockDragSelectionOptions {
 }
 
 // 文字选区保留在单个编辑宿主内，跨块拖动由应用维护整块选区。
-export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElement: HTMLElement,
+export const bindBlockDragSelectionGesture = (element: HTMLElement, getScrollElement: () => HTMLElement,
                                               options: IBlockDragSelectionOptions) => {
     const ownerDocument = element.ownerDocument;
     const ownerWindow = ownerDocument.defaultView;
@@ -25,6 +25,7 @@ export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElemen
     let suppressClickUntil = 0;
     let lastTouchTime = 0;
     let composing = false;
+    let scrollElement: HTMLElement;
 
     const finish = (cancelled: boolean) => {
         const previous = gesture;
@@ -37,7 +38,8 @@ export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElemen
         ownerDocument.removeEventListener("touchstart", additionalTouch, true);
         ownerDocument.removeEventListener("keydown", keyDown, true);
         ownerDocument.removeEventListener("dragstart", dragStart, true);
-        scrollElement.removeEventListener("scroll", scroll);
+        scrollElement?.removeEventListener("scroll", scroll);
+        scrollElement = undefined;
         ownerWindow.removeEventListener("blur", cancel);
         if (previous?.active) {
             suppressClickUntil = Date.now() + 500;
@@ -112,8 +114,8 @@ export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElemen
                 Math.abs(touch.clientY - gesture.point.clientY) < Constants.SIZE_DRAG_THRESHOLD) {
                 return;
             }
-            // 普通滑动交给浏览器滚动；多选模式或持续长按后的滑动才尝试扩选。
-            if (!options.isMultiSelectMode() && Date.now() - gesture.time < Constants.TIMEOUT_MULTIPLE_SELECT) {
+            // 普通滑动交给浏览器滚动，多选模式下也需持续长按后才尝试扩选。
+            if (Date.now() - gesture.time < Constants.TIMEOUT_MULTIPLE_SELECT) {
                 cancel();
                 return;
             }
@@ -145,6 +147,8 @@ export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElemen
             return;
         }
         gesture = {source, block, point, time: Date.now(), touchID, active: false, lastPoint: point};
+        // 正文宿主先于滚动容器初始化，开始手势时再绑定实际容器。
+        scrollElement = getScrollElement();
         ownerDocument.addEventListener("keydown", keyDown, true);
         ownerDocument.addEventListener("dragstart", dragStart, true);
         ownerWindow.addEventListener("blur", cancel);
@@ -175,10 +179,7 @@ export const bindBlockDragSelectionGesture = (element: HTMLElement, scrollElemen
             return;
         }
         const touch = event.touches[0];
-        if (start(event.target as HTMLElement, touch, "touch", touch.identifier) && options.isMultiSelectMode()) {
-            // 多选模式中的触摸从按下时阻止原生滚动，松手未移动仍交给现有点选处理。
-            event.preventDefault();
-        }
+        start(event.target as HTMLElement, touch, "touch", touch.identifier);
     };
     const click = (event: MouseEvent) => {
         if (Date.now() < suppressClickUntil) {

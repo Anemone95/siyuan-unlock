@@ -10,9 +10,11 @@ package agent
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/88250/gulu"
 	"github.com/siyuan-note/siyuan/kernel/util"
@@ -50,7 +52,7 @@ func TestSaveSessionRevisionConflictAndUnknownFields(t *testing.T) {
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 		"future":    map[string]any{"enabled": true},
 	}
-	revision, err := SaveSession(marshalSession(t, base))
+	revision, _, err := SaveSessionState(marshalSession(t, base))
 	if err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
@@ -81,7 +83,7 @@ func TestSaveSessionRevisionConflictAndUnknownFields(t *testing.T) {
 		"entries":          base["entries"],
 		"expectedRevision": int64(0),
 	}
-	revision, err = SaveSession(marshalSession(t, stale))
+	revision, _, err = SaveSessionState(marshalSession(t, stale))
 	if !errors.Is(err, ErrSessionConflict) || revision != 1 {
 		t.Fatalf("expected revision conflict: revision=%d, err=%v", revision, err)
 	}
@@ -95,7 +97,7 @@ func TestSaveSessionRevisionConflictAndUnknownFields(t *testing.T) {
 		"expectedRevision":    int64(1),
 		"lastCommittedTurnID": "forged-turn",
 	}
-	revision, err = SaveSession(marshalSession(t, update))
+	revision, _, err = SaveSessionState(marshalSession(t, update))
 	if err != nil || revision != 2 {
 		t.Fatalf("save updated session failed: revision=%d, err=%v", revision, err)
 	}
@@ -126,7 +128,7 @@ func TestSessionPermissionCanBeRevoked(t *testing.T) {
 		"alwaysAllow": true,
 		"entries":     []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 	session, err := GetSession(testSessionID)
@@ -184,7 +186,7 @@ func TestConfirmSessionPersistsAlwaysAllowBeforeAccepting(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 	controller, err := registerSessionPermissionController(testSessionID)
@@ -228,7 +230,7 @@ func TestRuntimeRecoveryCommitDoesNotDuplicateHistory(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 
@@ -311,17 +313,15 @@ func TestRuntimeRecoveryCommitDoesNotDuplicateHistory(t *testing.T) {
 		t.Fatalf("runtime token metadata was not restored: %#v", recovered)
 	}
 	wrongCommit := map[string]any{}
-	for key, value := range recovered {
-		wrongCommit[key] = value
-	}
+	maps.Copy(wrongCommit, recovered)
 	wrongCommit["expectedRevision"] = int64(1)
 	wrongCommit["commitTurnID"] = "20260715120009-abcdefg"
-	if revision, err := SaveSession(marshalSession(t, wrongCommit)); !errors.Is(err, ErrSessionConflict) || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, wrongCommit)); !errors.Is(err, ErrSessionConflict) || revision != 1 {
 		t.Fatalf("mismatched runtime commit was accepted: revision=%d, err=%v", revision, err)
 	}
 
 	recovered["expectedRevision"] = int64(1)
-	if revision, err := SaveSession(marshalSession(t, recovered)); !errors.Is(err, ErrRuntimeNotFinalized) || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, recovered)); !errors.Is(err, ErrRuntimeNotFinalized) || revision != 1 {
 		t.Fatalf("running runtime turn was committed: revision=%d, err=%v", revision, err)
 	}
 	turn.State = "interrupted"
@@ -363,9 +363,7 @@ func TestRuntimeRecoveryCommitDoesNotDuplicateHistory(t *testing.T) {
 		}
 	}
 	repeatedCommit := map[string]any{}
-	for key, value := range committed {
-		repeatedCommit[key] = value
-	}
+	maps.Copy(repeatedCommit, committed)
 	repeatedCommit["entries"].([]any)[1].(map[string]any)["content"] = "tampered repeated commit"
 	// 模拟提交已落盘但响应丢失：客户端会携带旧修订号原样重试。
 	repeatedCommit["expectedRevision"] = int64(1)
@@ -421,13 +419,14 @@ func TestRegenerateRuntimeRecoveryKeepsEditedUserContent(t *testing.T) {
 				"references":    []any{map[string]any{"id": "block-1", "title": "First block"}},
 				"editorContext": map[string]any{"activeDocID": "old-doc"},
 				"blockHTML":     `<div data-node-id="original">original prompt</div>`,
+				"timestamp":     int64(1),
 			},
 			map[string]any{"id": "assistant-1", "type": "assistant", "content": "old answer"},
 			map[string]any{"id": "user-2", "type": "user", "content": "later prompt"},
 			map[string]any{"id": "assistant-2", "type": "assistant", "content": "later answer"},
 		},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 
@@ -448,9 +447,14 @@ func TestRegenerateRuntimeRecoveryKeepsEditedUserContent(t *testing.T) {
 	turn.UserBlockHTML = new(editedBlockHTML)
 	turn.UserReferences = &emptyReferences
 	turn.UserEditorContext = &EditorContext{ActiveDocID: "new-doc"}
+	startedAt := time.Now().UnixMilli()
 	if err := beginRuntimeTurn(testSessionID, turn); err != nil {
 		t.Fatal(err)
 	}
+	if turn.UserTimestamp < startedAt || turn.UserTimestamp > time.Now().UnixMilli() {
+		t.Fatalf("edited user timestamp was not initialized at turn start: %d", turn.UserTimestamp)
+	}
+	userTimestamp := turn.UserTimestamp
 	turn.State = "interrupted"
 	if err := saveRuntimeTurn(testSessionID, turn); err != nil {
 		t.Fatal(err)
@@ -461,6 +465,9 @@ func TestRegenerateRuntimeRecoveryKeepsEditedUserContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := recovered["entries"].([]any)
+	if timestamp := numberToInt64(entries[0].(map[string]any)["timestamp"]); timestamp != userTimestamp {
+		t.Fatalf("recovered edit lost its send time: %d, want %d", timestamp, userTimestamp)
+	}
 	if len(entries) != 2 || entries[0].(map[string]any)["content"] != "edited prompt" ||
 		entries[1].(map[string]any)["content"] != "new answer" {
 		t.Fatalf("regenerated runtime was not recovered consistently: %#v", entries)
@@ -481,6 +488,9 @@ func TestRegenerateRuntimeRecoveryKeepsEditedUserContent(t *testing.T) {
 		t.Fatalf("commit recovered regenerate turn failed: revision=%d, err=%v", revision, err)
 	}
 	committedEntries := canonical["entries"].([]any)
+	if timestamp := numberToInt64(committedEntries[0].(map[string]any)["timestamp"]); timestamp != userTimestamp {
+		t.Fatalf("committed edit lost its send time: %d, want %d", timestamp, userTimestamp)
+	}
 	if len(committedEntries) != 2 || committedEntries[0].(map[string]any)["content"] != "edited prompt" {
 		t.Fatalf("committed regenerate turn lost edited content: %#v", committedEntries)
 	}
@@ -496,6 +506,9 @@ func TestRegenerateRuntimeRecoveryKeepsEditedUserContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistedEntries := persisted["entries"].([]any)
+	if timestamp := numberToInt64(persistedEntries[0].(map[string]any)["timestamp"]); timestamp != userTimestamp {
+		t.Fatalf("persisted edit lost its send time: %d, want %d", timestamp, userTimestamp)
+	}
 	if blockHTML := persistedEntries[0].(map[string]any)["blockHTML"]; blockHTML != editedBlockHTML {
 		t.Fatalf("persisted regenerate turn lost edited block HTML: %#v", persistedEntries[0])
 	}
@@ -518,7 +531,7 @@ func TestRejectedNewSessionDoesNotCreateDirectory(t *testing.T) {
 		"entries":          []any{},
 		"expectedRevision": expectedRevision,
 	}
-	if _, err := SaveSession(marshalSession(t, session)); !errors.Is(err, ErrSessionConflict) {
+	if _, _, err := SaveSessionState(marshalSession(t, session)); !errors.Is(err, ErrSessionConflict) {
 		t.Fatalf("expected revision conflict, got %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(sessionsDir(), sessionID)); !os.IsNotExist(err) {
@@ -543,7 +556,7 @@ func TestSaveSessionRejectsCorruptExistingData(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{},
 	}
-	if _, err := SaveSession(marshalSession(t, data)); err == nil {
+	if _, _, err := SaveSessionState(marshalSession(t, data)); err == nil {
 		t.Fatal("corrupt existing session was overwritten")
 	}
 	raw, err := os.ReadFile(path)
@@ -564,7 +577,7 @@ func TestBeginRuntimeTurnRejectsStaleRevision(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 	turn := &agentRuntimeTurn{
@@ -591,7 +604,7 @@ func TestFinalizeOrphanedTurnMakesRuntimeRecoverable(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if revision, err := SaveSession(marshalSession(t, base)); err != nil || revision != 1 {
+	if revision, _, err := SaveSessionState(marshalSession(t, base)); err != nil || revision != 1 {
 		t.Fatalf("save initial session failed: revision=%d, err=%v", revision, err)
 	}
 	turn := &agentRuntimeTurn{
@@ -633,7 +646,7 @@ func TestFinalizeOrphanedTurnMakesRuntimeRecoverable(t *testing.T) {
 		t.Fatalf("orphaned runtime recovery metadata is incomplete: %#v", recovered)
 	}
 	recovered["expectedRevision"] = int64(1)
-	if revision, err := SaveSession(marshalSession(t, recovered)); err != nil || revision != 2 {
+	if revision, _, err := SaveSessionState(marshalSession(t, recovered)); err != nil || revision != 2 {
 		t.Fatalf("commit finalized orphan failed: revision=%d, err=%v", revision, err)
 	}
 	if turnID, err := RecoverableTurnID(testSessionID); err != nil || turnID != "" {
@@ -661,7 +674,7 @@ func TestGetSessionRejectsRuntimeWithoutUserAnchor(t *testing.T) {
 		"updatedAt": int64(1),
 		"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 	}
-	if _, err := SaveSession(marshalSession(t, session)); err != nil {
+	if _, _, err := SaveSessionState(marshalSession(t, session)); err != nil {
 		t.Fatal(err)
 	}
 	turn := &agentRuntimeTurn{
@@ -718,7 +731,7 @@ func TestGetSessionRejectsIncompatibleRuntimeMetadata(t *testing.T) {
 				"updatedAt": int64(1),
 				"entries":   []any{map[string]any{"id": "user-1", "type": "user", "content": "hello"}},
 			}
-			if _, err := SaveSession(marshalSession(t, session)); err != nil {
+			if _, _, err := SaveSessionState(marshalSession(t, session)); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(runtimePath(testSessionID), marshalSession(t, test.runtime), 0644); err != nil {
@@ -825,6 +838,7 @@ func TestApplyRegenerateRuntimeReplacesUserContent(t *testing.T) {
 			map[string]any{
 				"id": "user-1", "type": "user", "content": "original prompt",
 				"blockHTML": `<div data-node-id="original">original prompt</div>`,
+				"timestamp": int64(42),
 			},
 			map[string]any{"id": "assistant-1", "type": "assistant", "content": "old answer"},
 			map[string]any{"id": "user-2", "type": "user", "content": "later prompt"},
@@ -850,6 +864,9 @@ func TestApplyRegenerateRuntimeReplacesUserContent(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("regenerated history was not truncated: %#v", entries)
 	}
+	if timestamp := numberToInt64(entries[0].(map[string]any)["timestamp"]); timestamp != 42 {
+		t.Fatalf("legacy runtime without a send time changed user timestamp: %d", timestamp)
+	}
 	if content := entries[0].(map[string]any)["content"]; content != "edited prompt" {
 		t.Fatalf("edited user content was not restored: %v", content)
 	}
@@ -868,6 +885,7 @@ func TestApplyRegenerateRuntimePreservesUneditedUserBlockHTML(t *testing.T) {
 			map[string]any{
 				"id": "user-1", "type": "user", "content": "original prompt",
 				"blockHTML": originalBlockHTML,
+				"timestamp": int64(42),
 			},
 		},
 	}
@@ -882,6 +900,9 @@ func TestApplyRegenerateRuntimePreservesUneditedUserBlockHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := session["entries"].([]any)[0].(map[string]any)
+	if timestamp := numberToInt64(entry["timestamp"]); timestamp != 42 {
+		t.Fatalf("regenerate without an edit changed user send time: %d", timestamp)
+	}
 	if blockHTML := entry["blockHTML"]; blockHTML != originalBlockHTML {
 		t.Fatalf("regenerate without an edit changed user block HTML: %#v", entry)
 	}

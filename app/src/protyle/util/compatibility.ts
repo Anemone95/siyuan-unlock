@@ -1,4 +1,5 @@
-import {focusByRange} from "./selection";
+import {fetchWithAppId} from "../../util/fetchWithAppId";
+import {focusByRange} from "./selectionOffsets";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {Constants} from "../../constants";
 /// #if !BROWSER
@@ -7,7 +8,7 @@ import {ipcRenderer} from "electron";
 import {getDefaultSubType, getDefaultType, normalizeSearchTypes} from "../../search/getDefault";
 import {hideMessage, showMessage} from "../../dialog/message";
 import {isEncryptedBox, isSiYuanUriProtocol} from "../../util/pathName";
-import {isBrowser} from "../../util/functions";
+import {getFrontend, isBrowser} from "../../util/functions";
 import type {App} from "../../index";
 import {genUUID} from "../../util/genID";
 import {buildBlockDOMClipboardData} from "./blockDOMClipboard";
@@ -15,6 +16,7 @@ import {buildWebClipboardHTML, getTextSiyuanFromTextHTML} from "./clipboardData"
 import {prepareExternalClipboardHTML} from "./richClipboard";
 import {isIOSPlatform, isIPadOSPlatform} from "./browserCompatibility";
 import {canOpenExternalURL, getHostCapabilities} from "../../util/hostCapabilities";
+import {createDefaultMobileBottomBarConfig} from "../../mobile/util/mobileBottomBarConfig";
 
 export {encodeBase64, getTextSiyuanFromTextHTML} from "./clipboardData";
 
@@ -63,7 +65,7 @@ export const isPhablet = () => {
 };
 
 export const saveExportFile = async (uri: string, msgId?: string): Promise<TSaveExportFileResult> => {
-    if (!getHostCapabilities().importExport) {
+    if (!getHostCapabilities().documentImportExport) {
         if (msgId) {
             hideMessage(msgId);
         }
@@ -73,6 +75,23 @@ export const saveExportFile = async (uri: string, msgId?: string): Promise<TSave
         return {status: "error"};
     }
     /// #if !BROWSER
+    if (getHostCapabilities().remoteKernel) {
+        let result: TSaveExportFileResult;
+        try {
+            result = await ipcRenderer.invoke(Constants.SIYUAN_GET, {cmd: "saveRemoteExport", uri});
+        } catch (error) {
+            result = {status: "error"};
+        }
+        if (msgId) {
+            hideMessage(msgId);
+        }
+        if (result.status === "success") {
+            showMessage(window.siyuan.languages.exported);
+        } else if (result.status === "error") {
+            showMessage(window.siyuan.languages.exportFileSaveFailed, 0, "error");
+        }
+        return result;
+    }
     let saveErrorMsgId: string | undefined;
     try {
         const resolved = new URL(uri, `${location.origin}/`);
@@ -102,7 +121,7 @@ export const saveExportFile = async (uri: string, msgId?: string): Promise<TSave
                 }
                 return {status: "canceled"};
             }
-            const copyResponse = await (await fetch("/api/export/copyExportFile", {
+            const copyResponse = await (await fetchWithAppId("/api/export/copyExportFile", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({
@@ -229,7 +248,7 @@ export const getLocalFiles = async () => {
             cmd: "clipboardReadFiles",
         });
         if (Array.isArray(filePaths)) {
-            localFiles = filePaths.map(path => ({path, size: null}));
+            localFiles = filePaths.map((path): ILocalFiles => ({path, size: null}));
         }
     } else {
         const xmlString = await fetchSyncPost("/api/clipboard/readFilePaths", {});
@@ -487,7 +506,7 @@ export const writeBlockDOMClipboard = async (lute: Lute, blockDOM: string) => {
 };
 
 export const copyPlainText = (text: string) => {
-    text = text.replace(new RegExp(Constants.ZWSP, "g"), ""); // `复制纯文本` 时移除所有零宽空格 https://github.com/siyuan-note/siyuan/issues/6674
+    text = text.replaceAll(Constants.ZWSP, ""); // `复制纯文本` 时移除所有零宽空格 https://github.com/siyuan-note/siyuan/issues/6674
     writeText(text);
 };
 
@@ -631,6 +650,47 @@ export function isChromeBrowser(): boolean {
     return isChromium && !isEdge && !isOpera;
 }
 
+// 鸿蒙 WebView 用 OpenHarmony 标识操作系统，部分浏览器 UA 还会带上兼容的操作系统名
+// 因此该判断必须先于 Android 等平台判断，老版本 Android 内核鸿蒙不含此标识，按 Android 处理
+const isHarmonyOS = () => {
+    return /OpenHarmony/i.test(navigator.userAgent);
+};
+
+const PLATFORM_CLASSES = ["body--mac", "body--windows", "body--linux", "body--ios", "body--android", "body--harmony"];
+
+// 当前前端所在平台，取值互斥；只依据前端自身信息判断，不受内核上报的运行容器影响
+export const resolvePlatformClass = () => {
+    if (isHarmonyOS()) {
+        return "body--harmony";
+    }
+    if (isIOSDevice()) {
+        return "body--ios";
+    }
+    if (isAndroid()) {
+        return "body--android";
+    }
+    if (isMac()) {
+        return "body--mac";
+    }
+    if (isWindows()) {
+        return "body--windows";
+    }
+    return "body--linux";
+};
+
+// 平台类名集中在此写入，主窗口、独立窗口、设置窗口与移动端四个入口均需调用
+export const applyPlatformClasses = () => {
+    const platformClass = resolvePlatformClass();
+    PLATFORM_CLASSES.forEach(item => {
+        document.body.classList.toggle(item, item === platformClass);
+    });
+    // 前端形态标记供内置样式与第三方主题使用，在此提前写入，避免平台相关样式在首帧按浏览器端判断
+    document.documentElement.setAttribute("data-frontend", getFrontend());
+    // 下面两个类名仅供旧第三方主题使用，内置样式已改用上方平台类名，待主题迁移完成后移除
+    document.body.classList.toggle("body--win32", !isBrowser() && !isMac());
+    document.body.classList.toggle("body--win32-browser", isBrowser() && isWindows());
+};
+
 export const updateHotkeyAfterTip = (hotkey: string, split = " ") => {
     if (hotkey) {
         return split + updateHotkeyTip(hotkey);
@@ -665,7 +725,7 @@ export const updateHotkeyTip = (hotkey: string) => {
     return keys.join("+");
 };
 
-export const getLocalStorage = (cb: () => void) => {
+export const getLocalStorage = (cb: () => void, onError?: (error: unknown) => void) => {
     fetchPost("/api/storage/getLocalStorage", undefined, (response) => {
         window.siyuan.storage = response.data;
         // 历史数据迁移
@@ -698,18 +758,9 @@ export const getLocalStorage = (cb: () => void) => {
             rowTab: "",
             layoutTab: 0
         };
-        defaultStorage[Constants.LOCAL_PDFTHEME] = {
-            light: "light",
-            dark: "dark",
-            annoColor: "var(--b3-pdf-background1)"
-        };
         defaultStorage[Constants.LOCAL_LAYOUTS] = [];   // {name: "", layout:{}, time: number, filespaths: IFilesPath[]}
         defaultStorage[Constants.LOCAL_PLUGIN_DOCKS] = {};  // { pluginName: {dockId: IPluginDockTab}}
         defaultStorage[Constants.LOCAL_PLUGINTOPUNPIN] = [];
-        defaultStorage[Constants.LOCAL_OUTLINE] = {
-            keepCurrentExpand: false,
-            expandLevel: 6
-        };
         defaultStorage[Constants.LOCAL_FILEPOSITION] = {}; // {id: IScrollAttr}
         defaultStorage[Constants.LOCAL_DIALOGPOSITION] = {}; // {id: IPosition}
         defaultStorage[Constants.LOCAL_HISTORY] = {
@@ -741,6 +792,7 @@ export const getLocalStorage = (cb: () => void) => {
             mergeContentHeadingMode: "preserve",
         };
         defaultStorage[Constants.LOCAL_EXPORTPDF] = {
+            titleImage: true,
             landscape: false,
             marginType: "0",
             scale: 1,
@@ -751,9 +803,11 @@ export const getLocalStorage = (cb: () => void) => {
             mergeDocHeadingMode: "flat",
             mergeContentHeadingMode: "preserve",
             watermark: false,
-            paged: true
+            paged: true,
+            headingPageBreakLevels: [],
         };
         defaultStorage[Constants.LOCAL_EXPORTIMG] = {
+            titleImage: true,
             keepFold: false,
             watermark: false
         };
@@ -767,11 +821,7 @@ export const getLocalStorage = (cb: () => void) => {
             version: 1,
             tabs: [],
         };
-        defaultStorage["local-mobile-bars"] = {autoHide: true};
-        defaultStorage[Constants.LOCAL_MOBILE_BOTTOM_BAR] = {
-            version: 1,
-            actions: ["documents", "search", "newDoc", "tabs"],
-        };
+        defaultStorage[Constants.LOCAL_MOBILE_BOTTOM_BAR] = createDefaultMobileBottomBarConfig();
         defaultStorage[Constants.LOCAL_MOBILE_SIDE_PANEL] = {
             version: 1,
             left: ["file", "bookmark", "tag", "inbox", "plugin"],
@@ -805,19 +855,19 @@ export const getLocalStorage = (cb: () => void) => {
         };
         defaultStorage[Constants.LOCAL_ZOOM] = 1;
         defaultStorage[Constants.LOCAL_MOVE_PATH] = {keys: [], k: ""};
-        defaultStorage[Constants.LOCAL_RECENT_DOCS] = {type: "viewedAt"};   // TRecentDocsSort
         defaultStorage[Constants.LOCAL_AV_CALENDAR_MODES] = {};
+        defaultStorage[Constants.LOCAL_TABS_READING] = {};
 
-        [Constants.LOCAL_EXPORTIMG, Constants.LOCAL_EXPORTPATH, Constants.LOCAL_SEARCHKEYS, Constants.LOCAL_PDFTHEME, Constants.LOCAL_BAZAAR,
+        [Constants.LOCAL_EXPORTIMG, Constants.LOCAL_EXPORTPATH, Constants.LOCAL_SEARCHKEYS, Constants.LOCAL_BAZAAR,
             Constants.LOCAL_EXPORTWORD, Constants.LOCAL_EXPORTPDF, Constants.LOCAL_DOCINFO, Constants.LOCAL_MOBILE_TABS,
-            Constants.LOCAL_MOBILE_BOTTOM_BAR, Constants.LOCAL_MOBILE_SIDE_PANEL, "local-mobile-bars",
+            Constants.LOCAL_MOBILE_BOTTOM_BAR, Constants.LOCAL_MOBILE_SIDE_PANEL,
             Constants.LOCAL_FONTSTYLES,
             Constants.LOCAL_SEARCHDATA, Constants.LOCAL_ZOOM, Constants.LOCAL_LAYOUTS,
             Constants.LOCAL_PLUGINTOPUNPIN, Constants.LOCAL_SEARCHASSET, Constants.LOCAL_FLASHCARD,
             Constants.LOCAL_DIALOGPOSITION, Constants.LOCAL_SEARCHUNREF, Constants.LOCAL_HISTORY,
-            Constants.LOCAL_OUTLINE, Constants.LOCAL_FILEPOSITION, Constants.LOCAL_FILESPATHS, Constants.LOCAL_IMAGES,
-            Constants.LOCAL_PLUGIN_DOCKS, Constants.LOCAL_EMOJIS, Constants.LOCAL_MOVE_PATH, Constants.LOCAL_RECENT_DOCS,
-            Constants.LOCAL_CLOSED_TABS, Constants.LOCAL_AV_CALENDAR_MODES].forEach((key) => {
+            Constants.LOCAL_FILEPOSITION, Constants.LOCAL_FILESPATHS, Constants.LOCAL_IMAGES,
+            Constants.LOCAL_PLUGIN_DOCKS, Constants.LOCAL_EMOJIS, Constants.LOCAL_MOVE_PATH,
+            Constants.LOCAL_CLOSED_TABS, Constants.LOCAL_AV_CALENDAR_MODES, Constants.LOCAL_TABS_READING].forEach((key) => {
             const value = response.data[key];
             if (typeof value === "string") {
                 try {
@@ -856,7 +906,7 @@ export const getLocalStorage = (cb: () => void) => {
             setStorageVal(Constants.LOCAL_CLOSED_TABS, sanitizedClosedTabs);
         }
         cb();
-    });
+    }, undefined, onError ? response => onError(new Error(response.msg)) : undefined);
 };
 
 export const isSensitiveSearchConfig = (config?: Config.IUILayoutTabSearchConfig) => {
@@ -877,12 +927,13 @@ export const isSensitiveLayoutData = (data?: {
     type?: string,
     notebookId?: string,
     config?: Config.IUILayoutTabSearchConfig,
+    databaseRow?: {notebookID: string},
 }) => {
     if (!data) {
         return false;
     }
     if (data.instance === "Editor") {
-        return isEncryptedBox(data.notebookId);
+        return isEncryptedBox(data.notebookId) || isEncryptedBox(data.databaseRow?.notebookID);
     }
     if (data.instance === "Search") {
         return isSensitiveSearchConfig(data.config);

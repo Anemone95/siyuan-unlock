@@ -7,12 +7,12 @@ const sources = () => {
     const ts = require("typescript");
     const preprocess = require("ifdef-loader/preprocessor").parse;
     const modules = {};
-    for (const name of ["layout/dock/BacklinkContent", "layout/dock/backlinkRefresh",
+    for (const name of ["menus/menuToggle", "layout/dock/BacklinkContent", "layout/dock/backlinkRefresh",
         "layout/dock/GlobalBacklinkList", "layout/dock/globalBacklinkPaging",
         "layout/dock/backlinkReadingAnchor", "layout/dock/backlinkSourceFilter", "mobile/util/secondaryEditors",
-        "mobile/util/backlinkPanels", "mobile/util/openBacklinks", "mobile/util/bindBottomSheetDrag", "mobile/util/bindBottomSheetDialog", "menus/sheetOpen", "protyle/util/transactionQueue",
+        "mobile/util/backlinkPanels", "mobile/util/openBacklinks", "mobile/util/MobileEditorDialog", "mobile/util/bindBottomSheetDrag", "mobile/util/bindBottomSheetDialog", "menus/sheetOpen", "protyle/util/transactionQueue",
         "util/escape", "util/zIndex", "dialog/index", "layout/dock/panelSearch", "protyle/wysiwyg/backlinkTypeFold",
-        "layout/dock/backlinkMentionCache", "layout/dock/bottomBacklinkScroll"]) {
+        "layout/dock/backlinkMentionCache", "layout/dock/bottomBacklinkScroll", "protyle/gutter/layout"]) {
         modules[name] = ts.transpileModule(preprocess(
             readFileSync(path.join(__dirname, "../src", name + ".ts"), "utf8"),
             {MOBILE: true, BROWSER: true}, false, true), {
@@ -29,6 +29,9 @@ const runCases = async (sources) => {
     const requests = [];
     const tick = () => new Promise(resolve => setTimeout(resolve, 10));
     const stubs = {
+        "config/util/configApi": {config: {set: (_path, value) => stubs["util/fetch"].fetchSyncPost("/api/setting/patch", {editor: value})}},
+        "dialog/anchoredInput": {getAnchoredInputMask: () => null},
+        "block/panelOwnership": {getDialogBlockPanel() {}, destroyDialogBlockPanels() {}},
         "editor/assetOpen": {normalizeAssetOpenConfig: value => value},
         "layout/dock/backlinkRefFilterMenu": {loadBacklinkRefFilterMenu: noop},
         "protyle/render/av/editorSession": {hasAVEditorSession: () => false},
@@ -103,6 +106,29 @@ const runCases = async (sources) => {
     const style = document.createElement("style");
     style.textContent = ".fn__none{display:none!important}.protyle{min-height:32px}.panel{height:400px}";
     document.head.appendChild(style);
+    const {getGutterFixedContainerRect, getFixedGutterPosition} = load("protyle/gutter/layout");
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;top:180px;left:20px;width:300px;height:240px;transform:translateY(0)";
+    container.innerHTML = '<div class="protyle"><button style="position:fixed;width:24px;height:24px">block</button></div>';
+    document.body.appendChild(container);
+    const gutterEditor = container.firstElementChild;
+    const gutter = gutterEditor.firstElementChild;
+    for (const className of ["mobile-bottom-sheet", "layout--float"]) {
+        container.className = className;
+        for (const translate of [0, 30]) {
+            container.style.transform = `translateY(${translate}px)`;
+            const origin = getGutterFixedContainerRect(gutterEditor);
+            gutter.style.top = `${getFixedGutterPosition(260, origin?.top)}px`;
+            gutter.style.left = `${getFixedGutterPosition(40, origin?.left)}px`;
+            assert.equal(gutter.getBoundingClientRect().top, 260, `${className} must retain the visible gutter position`);
+            assert.equal(gutter.getBoundingClientRect().left, 40);
+        }
+    }
+    container.style.transform = "none";
+    assert.equal(getGutterFixedContainerRect(gutterEditor), undefined);
+    container.className = "";
+    assert.equal(getGutterFixedContainerRect(gutterEditor), undefined);
+    container.remove();
     const key = {custom: ""};
     window.siyuan = {config: {editor: {backlinkSort: 0, backmentionSort: 0, backlinkExpandCount: 0,
         backmentionExpandCount: 0}, keymap: {editor: {general: {expand: key, collapse: key}}, general: {closeTab: key}}},
@@ -136,6 +162,7 @@ const runCases = async (sources) => {
     assert.deepEqual(registry.getMobileSecondaryEditors(), [editor]);
     panel.markIndexDirty({backlinkChanged: true, backlinkFull: true});
     panel.refreshAfterIndex();
+    await new Promise(resolve => setTimeout(resolve, 1100));
     const inFlight = requests.shift();
     editor.protyle.wysiwyg.element.focus();
     assert.equal(registry.getActiveMobileSecondaryEditor(), editor);
@@ -285,7 +312,7 @@ const runCases = async (sources) => {
     sheet.editors.push(sheetEditor);
     registry.registerMobileSecondaryEditor(sheetEditor, noop);
     sheetEditor.protyle.wysiwyg.flushPendingInput = () => save;
-    const closing = panels.closeMobileBacklinkSheets();
+    const closing = load("mobile/util/MobileEditorDialog").closeMobileEditorSheets();
     await tick();
     assert.equal(sheetEditor.destroyed, undefined, "sheet must remain mounted until pending input completes");
     finishSave();

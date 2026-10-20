@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -54,7 +55,7 @@ import (
 var historyTicker = time.NewTicker(time.Minute * 10)
 
 func AutoGenerateFileHistory() {
-	ChangeHistoryTick(Conf.Editor.GenerateHistoryInterval)
+	ChangeHistoryTick(Conf.Editor.Load().GenerateHistoryInterval)
 	for {
 		<-historyTicker.C
 		task.AppendTask(task.HistoryGenerateFile, GenerateFileHistory)
@@ -65,7 +66,7 @@ func AutoGenerateFileHistory() {
 // 锁定后定时器（GenerateFileHistory）无法为加密笔记本生成历史（不在 GetOpenedBoxes 里）。
 func GenerateFileHistoryForBox(box *Box) {
 	defer logging.Recover()
-	if 1 > Conf.Editor.GenerateHistoryInterval {
+	if 1 > Conf.Editor.Load().GenerateHistoryInterval {
 		return
 	}
 	box.generateDocHistory0()
@@ -74,7 +75,7 @@ func GenerateFileHistoryForBox(box *Box) {
 func GenerateFileHistory() {
 	defer logging.Recover()
 
-	if 1 > Conf.Editor.GenerateHistoryInterval {
+	if 1 > Conf.Editor.Load().GenerateHistoryInterval {
 		return
 	}
 
@@ -393,7 +394,7 @@ func RollbackDocHistory(historyPath string) (err error) {
 				srcAvPath = boxSrcAvPath
 				destAvPath = filepath.Join(util.DataDir, boxID, "storage", "av", avNode.AttributeViewID+".json")
 			}
-			if gulu.File.IsExist(destAvPath) {
+			if gulu.File.IsExist(destAvPath) || gulu.File.IsExist(srcAvPath) {
 				avBoxID := ""
 				if encrypted {
 					avBoxID = boxID
@@ -571,7 +572,9 @@ func RollbackAssetsHistory(historyPath string) (err error) {
 	relPath := strings.TrimPrefix(filepath.ToSlash(historyPath), filepath.ToSlash(util.HistoryDir))
 	relPath = strings.TrimPrefix(relPath, "/")
 	pathParts := strings.SplitN(relPath, "/", 3)
-	data, readErr := filelock.ReadFile(from)
+	filelock.Lock(from)
+	data, readErr := os.ReadFile(from)
+	filelock.Unlock(from)
 	if readErr != nil {
 		return readErr
 	}
@@ -585,13 +588,36 @@ func RollbackAssetsHistory(historyPath string) (err error) {
 			return fmt.Errorf("encrypted notebook asset history is plaintext [%s]", pathParts[1])
 		}
 		// 加密笔记本的资源回滚到笔记本级 assets 目录
-		to = filepath.Join(util.DataDir, pathParts[1], "assets", filepath.Base(historyPath))
+		assetPath := pathParts[2]
+		if !strings.HasPrefix(assetPath, "assets/") || path.Clean(assetPath) != assetPath || strings.Contains(assetPath, "\\") {
+			return errors.New("invalid encrypted asset history path")
+		}
+		boxID := pathParts[1]
+		HoldBoxReadLock(boxID)
+		defer ReleaseBoxReadLock(boxID)
+		dek, dekErr := GetDEKIfUnlocked(boxID)
+		if dekErr != nil {
+			return errors.New(Conf.Language(314))
+		}
+		defer zeroAndClear(dek)
+		if _, err = DecryptAssetToWriter(boxID, filepath.Base(historyPath), dek, bytes.NewReader(data), io.Discard); err != nil {
+			return err
+		}
+		to = filepath.Join(util.DataDir, boxID, filepath.FromSlash(assetPath))
+		if err = validateEncryptedCleanupPath(util.DataDir, to); err != nil {
+			return err
+		}
 		if err = os.MkdirAll(filepath.Dir(to), 0755); err != nil {
 			return
 		}
 	}
 
-	if err = filelock.CopyNewtimes(from, to); err != nil {
+	if encrypted {
+		err = writeEncryptedCleanupData(to, data)
+	} else {
+		err = filelock.CopyNewtimes(from, to)
+	}
+	if err != nil {
 		logging.LogErrorf("copy file [%s] to [%s] failed: %s", from, to, err)
 		return
 	}
@@ -660,6 +686,11 @@ func RollbackNotebookHistory(historyPath string) (err error) {
 	to := filepath.Join(util.DataDir, boxID)
 	if filelock.IsExist(to) {
 		return errors.New(Conf.Language(371))
+	}
+	boundRecovery := &Transaction{trees: map[string]*parse.Tree{}}
+	defer func() { boundRecovery.finishAttributeViewMutation(err != nil) }()
+	if err = boundRecovery.restoreNotebookAttributeViewHistory(from, boxID); err != nil {
+		return err
 	}
 
 	if err = filelock.CopyNewtimes(from, to); err != nil {
@@ -817,7 +848,9 @@ func buildSearchHistoryQueryFilter(query, op, box, table string, typ int) (stmt 
 		case HistoryTypeDoc:
 			stmt += table + " MATCH '{title content}:(" + query + ")'"
 		case HistoryTypeDocID:
-			stmt += " id = '" + query + "'"
+			// id 为等值比较，仅需按 SQL 字符串字面量转义单引号，不能使用面向 FTS 的 stringQuery
+			// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-4hjx-84f6-gr7c
+			stmt += " id = '" + strings.ReplaceAll(query, "'", "''") + "'"
 		case HistoryTypeAsset:
 			stmt += table + " MATCH '{title content}:(" + query + ")'"
 		case HistoryTypeDatabase:
@@ -828,7 +861,13 @@ func buildSearchHistoryQueryFilter(query, op, box, table string, typ int) (stmt 
 	}
 
 	if op = strings.TrimSpace(op); op != "" && op != "all" {
-		stmt += " AND op = '" + op + "'"
+		if !gulu.Str.Contains(op, validOps) {
+			// 白名单外的 op 取值直接判为空结果，避免拼入 SQL
+			// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-4hjx-84f6-gr7c
+			stmt += " AND 1=0"
+		} else {
+			stmt += " AND op = '" + op + "'"
+		}
 	}
 
 	if "%" != box && !ast.IsNodeIDPattern(box) {
@@ -845,7 +884,7 @@ func buildSearchHistoryQueryFilter(query, op, box, table string, typ int) (stmt 
 		stmt += " AND path LIKE '%/storage/av/%'"
 	}
 
-	ago := time.Now().Add(-24 * time.Hour * time.Duration(Conf.Editor.HistoryRetentionDays))
+	ago := time.Now().Add(-24 * time.Hour * time.Duration(Conf.Editor.Load().HistoryRetentionDays))
 	stmt += " AND CAST(created AS INTEGER) > " + fmt.Sprintf("%d", ago.Unix()) + ""
 	return
 }
@@ -984,7 +1023,6 @@ func (box *Box) generateDocHistory0() {
 	}
 
 	indexHistoryDir(filepath.Base(historyDir), util.NewLute())
-	return
 }
 
 func generateDocHistoryFile(boxID, file, historyDir string, luteEngine *lute.Lute) error {
@@ -1043,7 +1081,7 @@ func clearOutdatedHistoryDir() {
 	}
 
 	now := time.Now()
-	ago := now.Add(-24 * time.Hour * time.Duration(Conf.Editor.HistoryRetentionDays)).Unix()
+	ago := now.Add(-24 * time.Hour * time.Duration(Conf.Editor.Load().HistoryRetentionDays)).Unix()
 	var removes []string
 	for _, dir := range dirs {
 		dirInfo, err := dir.Info()
@@ -1188,7 +1226,6 @@ func generateTreeHistory(tree *parse.Tree, historyDir string) {
 		logging.LogErrorf("generate history failed: %s", err)
 		return
 	}
-	return
 }
 
 func generateAvHistoryInTree(tree *parse.Tree, historyDir string) {
@@ -1222,7 +1259,6 @@ func getHistoryDir(suffix string) (ret string, err error) {
 
 func ReindexHistory() {
 	task.AppendTask(task.HistoryDatabaseIndexFull, fullReindexHistory)
-	return
 }
 
 func fullReindexHistory() {
@@ -1245,7 +1281,6 @@ func fullReindexHistory() {
 		name := historyDir.Name()
 		indexHistoryDir(name, lutEngine)
 	}
-	return
 }
 
 var validOps = []string{HistoryOpClean, HistoryOpUpdate, HistoryOpDelete, HistoryOpFormat, HistoryOpSync, HistoryOpReplace, HistoryOpOutline}
@@ -1408,7 +1443,6 @@ func indexHistoryDir(name string, luteEngine *lute.Lute) {
 	}
 
 	sql.IndexHistoriesQueue(histories)
-	return
 }
 
 func fromSQLHistories(sqlHistories []*sql.History) (ret []*HistoryItem) {

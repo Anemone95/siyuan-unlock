@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -184,8 +185,8 @@ func agentMessageAttachments(message AgentMessage) (ret []AgentAttachment) {
 }
 
 func latestAgentMessageAttachments(messages []AgentMessage) (index int, attachments []AgentAttachment) {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if attachments = agentMessageAttachments(messages[i]); len(attachments) > 0 {
+	for i, message := range slices.Backward(messages) {
+		if attachments = agentMessageAttachments(message); len(attachments) > 0 {
 			return i, attachments
 		}
 	}
@@ -328,16 +329,14 @@ func isImageInputUnsupportedError(err error) bool {
 }
 
 func imageInputValidationError(err error) (statusCode int, detail string, ok bool) {
-	var apiErr *openai.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*openai.APIError](err); ok {
 		detail = apiErr.Message + " " + apiErr.Type + " " + fmt.Sprint(apiErr.Code)
 		if apiErr.Param != nil {
 			detail += " " + *apiErr.Param
 		}
 		return apiErr.HTTPStatusCode, detail, true
 	}
-	var requestErr *openai.RequestError
-	if errors.As(err, &requestErr) {
+	if requestErr, ok := errors.AsType[*openai.RequestError](err); ok {
 		return requestErr.HTTPStatusCode, requestErr.Error(), true
 	}
 	return 0, "", false
@@ -350,31 +349,6 @@ func containsAny(value string, candidates ...string) bool {
 		}
 	}
 	return false
-}
-
-// createImageCompatibleStream 在上游明确拒绝图片且尚未产生输出时，使用纯文本请求投影兼容重试一次。
-func createImageCompatibleStream(
-	ctx context.Context,
-	client *util.AIClient,
-	req openai.ChatCompletionRequest,
-	capabilityKey string,
-	forceDowngrade bool,
-	maxRetries int,
-	requestTimeout time.Duration,
-	streamIdleTimeout time.Duration,
-	retryDelay func(string, int) time.Duration,
-	ch chan<- AgentEvent,
-) (
-	stream *util.OpenAICompletionStream,
-	firstResponse openai.ChatCompletionStreamResponse,
-	cancel context.CancelFunc,
-	requestMessages []openai.ChatCompletionMessage,
-	downgraded bool,
-	unsupportedDetected bool,
-	err error,
-) {
-	return createProtocolImageCompatibleStream(ctx, client, util.OpenAIProtocolChatCompletions, req, nil, capabilityKey,
-		forceDowngrade, maxRetries, requestTimeout, streamIdleTimeout, retryDelay, ch)
 }
 
 func createProtocolImageCompatibleStream(

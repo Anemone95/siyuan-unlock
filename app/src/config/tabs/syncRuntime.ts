@@ -1,8 +1,11 @@
-import {fetchPost, fetchSyncPost} from "../../util/fetch";
-import {processSync, progressLoading} from "../../dialog/processSystem";
+import {config as configApi} from "../util/configApi";
+import {fetchSyncPost} from "../../util/fetch";
+import {processSync} from "../../dialog/processSystem";
+import {progressLoading} from "../../dialog/progress";
 import {confirmDialog} from "../../dialog/confirmDialog";
 import {updateAccountPanelVisibility} from "./accountUi";
 import {hideMessage, showMessage} from "../../dialog/message";
+import {refreshSyncCloudDirBlock} from "../../sync/syncGuide";
 import {
     refreshLANSyncConfigItemVisibility,
     refreshSyncModeRelatedItems,
@@ -84,10 +87,7 @@ const setSyncAssetDownloadMode = async (mode: Config.ISync["assetDownloadMode"])
         messageId = showMessage(window.siyuan.languages.syncAssetDownloadModeUpdating, -1);
     }, 300);
     try {
-        const response = await fetchSyncPost("/api/sync/setSyncAssetDownloadMode", {mode});
-        if (response.code === 0 && (response.data.assetDownloadMode === 0 || response.data.assetDownloadMode === 1)) {
-            window.siyuan.config.sync.assetDownloadMode = response.data.assetDownloadMode;
-        }
+        await configApi.set("sync.assetDownloadMode", mode);
     } catch (error) {
         console.warn("[config] failed to update asset download mode", error);
         showMessage(window.siyuan.languages.syncAssetDownloadModeFailed, 5000, "error");
@@ -158,11 +158,7 @@ export const mountLANSyncStatus = (root: HTMLElement) => {
 /** 切换同步提供商等场景：刷新云空间相关区块并重置云目录列表 */
 export const refreshSyncCloudSpaceGroup = (root: Element) => {
     refreshSyncTabPanels(root);
-    const syncConfigElement = root.querySelector("#syncCloudList");
-    if (syncConfigElement) {
-        syncConfigElement.innerHTML = "";
-        syncConfigElement.classList.add("fn__none");
-    }
+    refreshSyncCloudDirBlock(root);
 };
 
 /** 账号同步 Tab：按控件 id 提交配置并更新本地运行时 */
@@ -173,7 +169,7 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
         }
         case "sync.enabled": {
             const enabled = Boolean(value) as Config.ISync["enabled"];
-            fetchPost("/api/sync/setSyncEnable", {enabled}, () => {
+            configApi.set("sync.enabled", enabled, () => {
                 window.siyuan.config.sync.enabled = enabled;
                 if (syncTabElement) {
                     refreshLANSyncConfigItemVisibility(syncTabElement);
@@ -185,14 +181,14 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
         }
         case "sync.generateConflictDoc": {
             const generateConflictDoc = Boolean(value) as Config.ISync["generateConflictDoc"];
-            fetchPost("/api/sync/setSyncGenerateConflictDoc", {enabled: generateConflictDoc}, () => {
+            configApi.set("sync.generateConflictDoc", generateConflictDoc, () => {
                 window.siyuan.config.sync.generateConflictDoc = generateConflictDoc;
             });
             break;
         }
         case "sync.mode": {
             const mode = value as Config.ISync["mode"];
-            fetchPost("/api/sync/setSyncMode", {mode}, () => {
+            configApi.set("sync.mode", mode, () => {
                 window.siyuan.config.sync.mode = mode;
                 if (syncTabElement) {
                     refreshSyncModeRelatedItems(syncTabElement);
@@ -205,7 +201,7 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
         }
         case "sync.interval": {
             const interval = value as Config.ISync["interval"];
-            fetchPost("/api/sync/setSyncInterval", {interval}, () => {
+            configApi.set("sync.interval", interval, () => {
                 window.siyuan.config.sync.interval = interval;
                 processSync();
             });
@@ -213,7 +209,7 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
         }
         case "sync.perception": {
             const perception = Boolean(value) as Config.ISync["perception"];
-            fetchPost("/api/sync/setSyncPerception", {enabled: perception}, () => {
+            configApi.set("sync.perception", perception, () => {
                 window.siyuan.config.sync.perception = perception;
                 processSync();
             });
@@ -221,10 +217,7 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
         }
         case "sync.lan.enabled": {
             const enabled = Boolean(value) as Config.ISyncLAN["enabled"];
-            fetchPost("/api/sync/setSyncLAN", {
-                enabled,
-                maxConcurrentReqs: window.siyuan.config.sync.lan.maxConcurrentReqs,
-            }, () => {
+            configApi.set("sync.lan.enabled", enabled, () => {
                 window.siyuan.config.sync.lan.enabled = enabled;
                 if (syncTabElement) {
                     refreshLANSyncStatus(syncTabElement);
@@ -235,14 +228,14 @@ export const patchSyncConfig = (controlId: string, value: unknown) => {
 
         case "repo.indexRetentionDays": {
             const indexRetentionDays = value as Config.IRepo["indexRetentionDays"];
-            fetchPost("/api/repo/setRepoIndexRetentionDays", {days: indexRetentionDays}, () => {
+            configApi.set("repo.indexRetentionDays", indexRetentionDays, () => {
                 window.siyuan.config.repo.indexRetentionDays = indexRetentionDays;
             });
             break;
         }
         case "repo.retentionIndexesDaily": {
             const retentionIndexesDaily = value as Config.IRepo["retentionIndexesDaily"];
-            fetchPost("/api/repo/setRetentionIndexesDaily", {indexes: retentionIndexesDaily}, () => {
+            configApi.set("repo.retentionIndexesDaily", retentionIndexesDaily, () => {
                 window.siyuan.config.repo.retentionIndexesDaily = retentionIndexesDaily;
             });
             break;

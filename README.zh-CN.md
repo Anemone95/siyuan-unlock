@@ -222,6 +222,14 @@ docker run -d \
 - `accessAuthCode`：锁屏密码，请**务必修改**，否则任何人都可以读写你的数据
   - 另外，也可以通过 `SIYUAN_ACCESS_AUTH_CODE` 环境变量设置锁屏密码。如果两者都设置了，命令行的值将优先
   - 可通过设置环境变量 `SIYUAN_ACCESS_AUTH_CODE_BYPASS=true` 禁用锁屏密码
+- OIDC 可替代锁屏密码作为 Docker 访问鉴权。设置 `SIYUAN_OIDC_ENABLED=true`、`SIYUAN_OIDC_PROVIDER`（`custom`、`google`、`microsoft` 或 `github`）、`SIYUAN_OIDC_CLIENT_ID` 以及下方的提供商相关配置。GitHub 使用其 OAuth 2.0 用户 API 适配器；其余提供商使用 OpenID Connect 发现与 ID Token 校验。在已启用 OIDC 且配置无效、又没有锁屏密码可用时，Docker 启动会直接终止
+  - `SIYUAN_OIDC_ISSUER_URL`：`custom` 和 `microsoft` 提供商所需的 Issuer URL；Microsoft 必须使用租户专属的 issuer，例如 `https://login.microsoftonline.com/<tenant-id>/v2.0`
+  - `SIYUAN_OIDC_CLIENT_SECRET`：OpenID Connect 提供商可选的客户端密钥；GitHub OAuth 适配器必须提供。所有授权码流程均使用 PKCE
+  - `SIYUAN_OIDC_SCOPES`：逗号或空格分隔的 scopes；始终包含 `openid`
+  - `SIYUAN_OIDC_REDIRECT_URL`：以 `/api/system/oidc/callback` 结尾的公网 HTTPS 回调 URL，远程浏览器访问时必填
+  - `SIYUAN_OIDC_ALLOW_ALL`：明确授予提供商认证的所有身份 SiYuan 管理员权限
+  - `SIYUAN_OIDC_CLAIM_RULES`：禁用 allow-all 时使用的声明规则 JSON 数组，例如 `[{"claim":"email","operator":"equals","values":["user@example.com"]},{"claim":"email_verified","operator":"equals","values":["true"]}]`；规则内取值为 OR，规则之间为 AND
+  - 原生移动应用使用固定的回调 URI `siyuan:/oidc-callback`；请按原样注册。移动端配置在保存前会使用该回调进行校验。自定义提供商、Microsoft 和 GitHub 仅在其应用注册接受该回调 URI 时可用；Google 的 Android 客户端类型不接受该私有 URI，因此 Google 登录仅限浏览器和桌面端流程
 - `SIYUAN_LANG`：界面语言（可选，Docker 下未设置时默认为 `en`）。接受 BCP 47 标签如 `zh-CN`/`zh-TW`/`en`/`ja`/`pt-BR`；旧下划线值如 `zh_CN`/`en_US` 也兼容。若希望**设置**中选择的语言在重启后仍生效，部署时请去掉该变量；若设置了，每次启动都会应用该值并覆盖已保存的语言设置
   - 也可通过 `--lang` 命令行参数设置。如果两者都设置了，命令行的值将优先
 
@@ -524,24 +532,17 @@ siyuan export md --id <block-id> -w ~/SiYuan
 
 CLI 可执行文件为 `<安装目录>/resources/kernel/SiYuan-Kernel`，可通过 `siyuan` 命令调用。
 
-- **Windows**：安装程序自动将内核目录加入 `PATH`，可直接使用 `siyuan`。微软商店版运行在 MSIX 沙箱中，无法自动修改 `PATH`；可部署一个 `siyuan.cmd` 转发器（一次性，商店版更新后依然有效）：
+- **Windows**：安装程序自动将内核目录加入 `PATH`，可直接使用 `siyuan`。微软商店版（3.8.7 及以上）在 Windows 10 1607（内部版本 14393）及以上系统中注册 `siyuan.exe` 应用执行别名。安装或更新后，打开新的终端并运行 `siyuan --help`
   ```powershell
-  # 仅适用于微软商店版 —— 在 PowerShell 中运行一次
-  $shimDir = "$env:LOCALAPPDATA\Microsoft\WindowsApps"   # 该目录默认已在 PATH 中
-  @(
-      '@echo off'
-      'setlocal'
-      'set "ROOT="'
-      'for /f "delims=" %%i in (''powershell -NoProfile -Command "(Get-AppxPackage *SiYuan*).InstallLocation"'') do set "ROOT=%%i"'
-      'if not defined ROOT goto :noshim'
-      '"%ROOT%\app\resources\kernel\SiYuan-Kernel.exe" %*'
-      'exit /b %ERRORLEVEL%'
-      ':noshim'
-      '1>&2 echo siyuan: 未找到微软商店版'
-      'exit /b 1'
-  ) | Set-Content "$shimDir\siyuan.cmd"
+  siyuan --help
+
+  # 检查实际使用的命令
+  Get-Command siyuan -All
+  where.exe siyuan
   ```
-  卸载商店版时如需清理：`Remove-Item "$env:LOCALAPPDATA\Microsoft\WindowsApps\siyuan.cmd"`。
+  如果找不到命令，请检查 Windows 中思源的应用执行别名是否已启用，以及 `%LOCALAPPDATA%\Microsoft\WindowsApps` 是否在 `PATH` 中。上述命令可检查命令解析结果；同时安装多个思源版本或 `PATH` 顺序可能导致调用其他可执行文件
+
+  如果曾创建旧的 `siyuan.cmd` 转发器，请先运行 `& "$env:LOCALAPPDATA\Microsoft\WindowsApps\siyuan.exe" --help` 确认商店版别名可用，再按需删除转发器：`Remove-Item "$env:LOCALAPPDATA\Microsoft\WindowsApps\siyuan.cmd"`
 - **macOS**：安装后创建软链接：
   ```bash
   ln -s /Applications/SiYuan.app/Contents/Resources/kernel/SiYuan-Kernel /usr/local/bin/siyuan

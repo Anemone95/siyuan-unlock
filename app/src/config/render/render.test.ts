@@ -21,9 +21,7 @@ describe("genNumberInputHtml", () => {
 
 describe("genStackHtml", () => {
     it("disables spell checking for technical fields while preserving the editor preference for prose", () => {
-        if (typeof Lute === "undefined") {
-            require("../../../stage/protyle/js/lute/lute.min.js");
-        }
+        assert.equal(typeof Lute, "undefined");
         const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
         try {
             for (const enabled of [true, false]) {
@@ -53,9 +51,7 @@ describe("genStackHtml", () => {
     });
 
     it("escapes textarea closing tags and literal character references", () => {
-        if (typeof Lute === "undefined") {
-            require("../../../stage/protyle/js/lute/lute.min.js");
-        }
+        assert.equal(typeof Lute, "undefined");
         const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
         Object.defineProperty(globalThis, "window", {
             configurable: true,
@@ -82,13 +78,13 @@ describe("genStackHtml", () => {
         }
     });
 
-    it("renders descriptions with controls using the primary text color", () => {
+    it("keeps descriptions beside controls styled as secondary text", () => {
         const html = genStackHtml([{
             left: {kind: "desc", text: "Setting name"},
             right: {kind: "button", id: "setting", label: "Configure", icon: "iconSettings"},
         }]);
 
-        assert.match(html, /class="fn__flex-center fn__flex-1 config-item__main">Setting name<\/div>/);
+        assert.match(html, /class="fn__flex-center fn__flex-1 config-item__main b3-label__text">Setting name<\/div>/);
         assert.doesNotMatch(html, /ft__on-surface/);
     });
 

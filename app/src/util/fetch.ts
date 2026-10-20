@@ -1,3 +1,4 @@
+import {fetchWithAppId} from "./fetchWithAppId";
 import {Constants} from "../constants";
 import {iosRecovery, iosTransactionFetch} from "./iosKernelRecovery";
 /// #if !BROWSER
@@ -7,6 +8,18 @@ import {processMessage} from "./processMessage";
 import {kernelError} from "./kernelFault";
 import {withFetchTimeout} from "./fetchTimeout";
 import type {FetchGet, FetchPost, FetchSyncPost} from "../types/api";
+import {trackSettingRequest} from "../config/setting/pending";
+import {trackEditorSaveRequest} from "../protyle/util/editorSave";
+import {showMessage} from "../dialog/message";
+
+const reportTransactionFailure = (url: string, error: Error) => {
+    if (url !== "/api/transactions" || error?.name === "AbortError") {
+        return;
+    }
+    // 保留当前编辑内容并提示核对保存结果，避免重发已在内核执行的事务。
+    showMessage(window.siyuan.languages.transactionSaveUnconfirmed, 0, "error", "transaction-save-unconfirmed");
+    void kernelError();
+};
 
 export const fetchPost = ((
     url: string,
@@ -46,7 +59,11 @@ export const fetchPost = ((
         init.signal = signal;
     }
     let isGetFile202 = false;
+<<<<<<< HEAD
     return withFetchTimeout((requestSignal) => (iosTransactionFetch(url, {...init, signal: requestSignal}) || fetch(url, {...init, signal: requestSignal})).then((response) => {
+=======
+    return trackEditorSaveRequest(url, data, trackSettingRequest(url, withFetchTimeout((requestSignal) => fetchWithAppId(url, {...init, signal: requestSignal}).then((response): Promise<IWebSocketData | string> | IWebSocketData => {
+>>>>>>> v3.8.8
         switch (response.status) {
             case 403:
             case 404:
@@ -77,7 +94,14 @@ export const fetchPost = ((
                     return response.text();
                 }
         }
+<<<<<<< HEAD
     }), signal, iosRecovery() && url === "/api/transactions" ? 0 : timeout).then((response: IWebSocketData) => {
+=======
+    }), signal, timeout), url === "/api/storage/setLocalStorageVal" && data?.key === Constants.LOCAL_SLASH_USAGE)).catch(error => {
+        reportTransactionFailure(url, error);
+        throw error;
+    }).then((response: IWebSocketData) => {
+>>>>>>> v3.8.8
         if (failCallback && url === "/api/file/getFile" && isGetFile202) {
             failCallback(response);
             return;
@@ -113,12 +137,8 @@ export const fetchPost = ((
             return;
         }
         console.warn("fetch post failed [" + e + "], url [" + url + "]");
-        if (url === "/api/transactions" && (e.message === "Failed to fetch" || e.message === "Unexpected end of JSON input")) {
-            kernelError();
-            return;
-        }
         /// #if !BROWSER
-        if (url === "/api/system/exit" || url === "/api/system/setWorkspaceDir" || (
+        if (url === "/api/system/setWorkspaceDir" || (
             ["/api/system/setUILayout"].includes(url) && data.errorExit // 内核中断，点关闭处理
         )) {
             ipcRenderer.send(Constants.SIYUAN_QUIT, location.port);
@@ -143,16 +163,29 @@ export const fetchSyncPost = (async (url: string, data?: any, headers?: Record<s
             init.body = JSON.stringify(data);
         }
     }
+<<<<<<< HEAD
     const res = await (iosTransactionFetch(url, init) || fetch(url, init));
     const res2 = await res.json() as IWebSocketData;
     if (process) {
         processMessage(res2);
     }
     return res2;
+=======
+    return trackSettingRequest(url, trackEditorSaveRequest(url, data,
+        fetchWithAppId(url, init).then(res => res.json() as Promise<IWebSocketData>)).catch(error => {
+        reportTransactionFailure(url, error);
+        throw error;
+    }).then(res2 => {
+        if (process) {
+            processMessage(res2);
+        }
+        return res2;
+    }), url === "/api/storage/setLocalStorageVal" && data?.key === Constants.LOCAL_SLASH_USAGE);
+>>>>>>> v3.8.8
 }) as FetchSyncPost<IWebSocketData>;
 
 export const fetchGet = ((url: string, cb: (response: IWebSocketData | IObject | string) => void) => {
-    fetch(url, {cache: "no-store"}).then((response) => {
+    fetchWithAppId(url, {cache: "no-store"}).then((response) => {
         if (response.headers.get("content-type")?.indexOf("application/json") > -1) {
             return response.json();
         } else {

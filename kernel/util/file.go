@@ -111,16 +111,25 @@ func GetMimeTypeByPath(filePath string) (m *mimetype.MIME, ok bool) {
 	return
 }
 
+// IsSymlinkPath 判断现有路径是否为符号链接或目录联接。
 func IsSymlinkPath(absPath string) bool {
 	fi, err := os.Lstat(absPath)
 	if err != nil {
 		return false
 	}
-	return 0 != fi.Mode()&os.ModeSymlink
+	return isLinkFileInfo(fi)
 }
 
+// IsSystemMetadataFile 判断是否为操作系统自动生成的元数据文件（如 macOS 的 .DS_Store），
+// 这类文件不属于业务数据，判空与清理时应忽略
+func IsSystemMetadataFile(name string) bool {
+	return name == ".DS_Store"
+}
+
+// IsEmptyDir 判断目录是否为空，忽略系统元数据文件（如 .DS_Store）
 func IsEmptyDir(p string) bool {
-	if !gulu.File.IsDir(p) {
+	info, err := os.Lstat(p)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return false
 	}
 
@@ -128,11 +137,59 @@ func IsEmptyDir(p string) bool {
 	if err != nil {
 		return false
 	}
-	return 1 > len(files)
+	for _, file := range files {
+		if !file.Type().IsRegular() || !IsSystemMetadataFile(file.Name()) {
+			return false
+		}
+	}
+	return true
 }
 
+// RemoveEmptyDir 删除仅含系统元数据文件（如 .DS_Store）的目录；若目录仍含业务文件则保留不动
+func RemoveEmptyDir(p string) (err error) {
+	info, err := os.Lstat(p)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !IsSystemMetadataFile(entry.Name()) {
+			return nil
+		}
+	}
+	for _, entry := range entries {
+		if err = os.Remove(filepath.Join(p, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return
+		}
+	}
+	if err = os.Remove(p); os.IsNotExist(err) {
+		return nil
+	}
+	return
+}
+
+// IsSymlink 判断目录条目是否为符号链接或目录联接。
 func IsSymlink(dir fs.DirEntry) bool {
-	return dir.Type() == fs.ModeSymlink
+	if dir.Type()&fs.ModeSymlink != 0 {
+		return true
+	}
+	if dir.Type()&fs.ModeIrregular == 0 {
+		return false
+	}
+	info, err := dir.Info()
+	return err == nil && isLinkFileInfo(info)
 }
 
 func IsDirRegularOrSymlink(dir fs.DirEntry) bool {
@@ -368,6 +425,8 @@ func FilterUploadFileName(name string) string {
 	return ret
 }
 
+var pdfAnnoPngPattern = regexp.MustCompile(`-{0,1}P{0,1}[0-9]{0,4}-{0,1}[0-9]{1,3}-[0-9]{14}-[0-9a-zA-Z]{7}\.png$`)
+
 func TruncateLenFileName(name string) (ret string) {
 	// 插入资源文件时文件名长度最大限制 189 字节 https://github.com/siyuan-note/siyuan/issues/7099
 	ext := filepath.Ext(name)
@@ -381,9 +440,7 @@ func TruncateLenFileName(name string) (ret string) {
 		// PNG 图片可能是 PDF 标注的截图，包含页面和旋转角度（name--P1--270-id.png），所以允许的长度更短一些
 		// https://github.com/siyuan-note/siyuan/pull/16714#issuecomment-3737987302
 
-		pdfAnnoPngPattern := "-{0,1}P{0,1}[0-9]{0,4}-{0,1}[0-9]{1,3}-[0-9]{14}-[0-9a-zA-Z]{7}\\.png$"
-		regx := regexp.MustCompile(pdfAnnoPngPattern)
-		pdfAnnoPngPart = regx.FindString(name)
+		pdfAnnoPngPart = pdfAnnoPngPattern.FindString(name)
 		if "" != pdfAnnoPngPart {
 			maxLen -= len(pdfAnnoPngPart) + len(".png")
 			name = strings.TrimSuffix(name, pdfAnnoPngPart)

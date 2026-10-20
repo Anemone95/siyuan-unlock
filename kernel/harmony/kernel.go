@@ -141,8 +141,8 @@ func StartKernel(container, appDir, workspaceBaseDir, timezoneID, localIPs, lang
 		sql.InitDatabase(false)
 		sql.InitHistoryDatabase(false)
 		sql.InitAssetContentDatabase(false)
-		sql.SetCaseSensitive(model.Conf.Search.CaseSensitive)
-		sql.SetIndexAssetPath(model.Conf.Search.IndexAssetPath)
+		// 数据库打开后重新应用搜索配置，使 PRAGMA case_sensitive_like 对新连接生效
+		model.ApplySearchRuntime()
 
 		model.BootSyncData()
 		model.CleanupEmptyPluginStorageDirs()
@@ -252,8 +252,7 @@ func Unzip(zipFilePath, destination *C.char) {
 func GetExportFilePath(exportPath *C.char) *C.char {
 	pathStr := C.GoString(exportPath)
 	var absPath string
-	if strings.HasPrefix(pathStr, "/export/") {
-		fileName := strings.TrimPrefix(pathStr, "/export/")
+	if fileName, ok := strings.CutPrefix(pathStr, "/export/"); ok {
 		if decoded, err := url.PathUnescape(fileName); err == nil {
 			fileName = decoded
 		}

@@ -97,7 +97,7 @@ func AuthThrottleCheck(key string) (retryAfter int) {
 		delete(authThrottles, key)
 		return 0
 	}
-	if authThrottleWindowSec*time.Second <= time.Now().Sub(throttle.LastFail) {
+	if authThrottleWindowSec*time.Second <= time.Since(throttle.LastFail) {
 		// 超过窗口期未再失败，清除计数避免误锁
 		delete(authThrottles, key)
 	}
@@ -130,9 +130,15 @@ func AuthThrottleFail(key string) {
 		return
 	}
 
-	lockSec := authThrottleLockBaseSec << (throttle.FailCount - authThrottleMaxFail)
-	if authThrottleLockMaxSec < lockSec {
-		lockSec = authThrottleLockMaxSec
+	lockSec := authThrottleLockBaseSec
+	for i := authThrottleMaxFail; i < throttle.FailCount; i++ {
+		if lockSec >= (authThrottleLockMaxSec+1)/2 {
+			// 达到锁定上限后固定失败计数，持续失败只延长锁定截止时间。
+			lockSec = authThrottleLockMaxSec
+			throttle.FailCount = i + 1
+			break
+		}
+		lockSec *= 2
 	}
 	throttle.LockUntil = now.Add(time.Duration(lockSec) * time.Second)
 }

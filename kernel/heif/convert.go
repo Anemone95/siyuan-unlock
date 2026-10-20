@@ -98,7 +98,8 @@ const (
 	ModeThumbnail Mode = "thumb"
 )
 
-func convert(ctx context.Context, source []byte, mode Mode) ([]byte, error) {
+// Convert 将 HEIF 转换为 JPEG，复用预览的尺寸、内存和并发限制，不写入缓存。
+func Convert(ctx context.Context, source []byte, mode Mode) ([]byte, error) {
 	if len(source) == 0 {
 		return nil, errors.New("empty HEIF image")
 	}
@@ -207,12 +208,6 @@ func validDimensions(width, height int) bool {
 
 func estimatedJPEGSize(img image.Image) int {
 	pixels := int64(img.Bounds().Dx()) * int64(img.Bounds().Dy())
-	estimate := pixels / 2
-	if estimate < 64*1024 {
-		estimate = 64 * 1024
-	}
-	if estimate > 32*1024*1024 {
-		estimate = 32 * 1024 * 1024
-	}
+	estimate := min(max(pixels/2, 64*1024), 32*1024*1024)
 	return int(estimate)
 }

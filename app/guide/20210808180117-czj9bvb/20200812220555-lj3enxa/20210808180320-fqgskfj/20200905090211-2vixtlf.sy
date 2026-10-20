@@ -6,7 +6,7 @@
 		"id": "20200905090211-2vixtlf",
 		"title": "内容块类型",
 		"type": "doc",
-		"updated": "20260926152549"
+		"updated": "20261017174053"
 	},
 	"Children": [
 		{
@@ -15,7 +15,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20210104090624-fkv1xsc",
-				"updated": "20260921215916"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -53,7 +53,7 @@
 			"Properties": {
 				"colgroup": "||",
 				"id": "20210104090624-c5bu25o",
-				"updated": "20260923221935"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -1014,6 +1014,75 @@
 							"Children": [
 								{
 									"Type": "NodeText",
+									"Data": "思维导图项块"
+								}
+							]
+						},
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "容器块"
+								}
+							]
+						}
+					]
+				},
+				{
+					"Type": "NodeTableRow",
+					"Data": "tr",
+					"Children": [
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "​​​​"
+								},
+								{
+									"Type": "NodeImage",
+									"Data": "span",
+									"Children": [
+										{
+											"Type": "NodeBang"
+										},
+										{
+											"Type": "NodeOpenBracket"
+										},
+										{
+											"Type": "NodeLinkText",
+											"Data": "listitem-block"
+										},
+										{
+											"Type": "NodeCloseBracket"
+										},
+										{
+											"Type": "NodeOpenParen"
+										},
+										{
+											"Type": "NodeLinkDest",
+											"Data": "assets/listitem-block-20260425175517-4uac18s.png"
+										},
+										{
+											"Type": "NodeCloseParen"
+										}
+									]
+								},
+								{
+									"Type": "NodeText",
+									"Data": "​"
+								}
+							]
+						},
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
 									"Data": "列表项"
 								},
 								{
@@ -1438,7 +1507,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20210104090624-9qgquxh",
-				"updated": "20260921215916"
+				"updated": "20261017174053"
 			},
 			"Children": [
 				{
@@ -1713,7 +1782,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20210104090624-erf17it",
-				"updated": "20260425180351"
+				"updated": "20261017174053"
 			},
 			"Children": [
 				{
@@ -1906,6 +1975,48 @@
 				{
 					"Type": "NodeText",
 					"Data": "如果表格包含合并的单元格或标题，则会以 HTML 形式复制或导出为 Markdown。"
+				}
+			]
+		},
+		{
+			"ID": "20261017142635-4dbby6c",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017142635-4dbby6c",
+				"updated": "20261017170001"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "移动端点击单元格可编辑文字。长按尚未进入编辑的单元格可进入区域选择，也可使用键盘工具栏的块菜单。拖动选区的两个角点手柄可扩大或缩小范围，拖到视口边缘可自动滚动表格。滑动单元格内容仍用于滚动；编辑文字时，长按仍用于选字。"
+				}
+			]
+		},
+		{
+			"ID": "20261017142635-bcg68ni",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017142635-bcg68ni",
+				"updated": "20261017174053"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "点击单元格后，其所在行和列的边框上会显示蓝色点阵手柄。点击列上方或行左侧的手柄可选中整列或整行。在顶部工具栏开启「多选」后，可点选增减不连续的单元格、行或列。通过「更多」可合并单元格、设置样式和对齐，或批量操作所选行列；点击「关闭」退出选择。"
+				}
+			]
+		},
+		{
+			"ID": "20261017142635-oe1mo6v",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017142635-oe1mo6v",
+				"updated": "20261017171205"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "点击任意一行的列分隔线使其高亮，再横向拖动高亮线调整列宽；纵向滑动仍用于滚动表格，点击线外退出调整。选中列后可通过「更多」按内容自适应或均分列宽。点击表格边缘的加号可添加行列，拖动边缘控件可批量增加行列或移除末尾的空白行列。收缩表格时会保留非空内容和合并单元格。"
 				}
 			]
 		},
@@ -2612,7 +2723,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260921215916-j34ty5i",
-				"updated": "20260926151827"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -2636,53 +2747,41 @@
 			]
 		},
 		{
-			"ID": "20260926151827-8wl1iml",
+			"ID": "20261016111305-t5hg0oj",
 			"Type": "NodeParagraph",
 			"Properties": {
-				"id": "20260926151827-8wl1iml",
-				"updated": "20260926152549"
+				"id": "20261016111305-t5hg0oj",
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
 					"Type": "NodeText",
-					"Data": "选中范围的第一个节点，点击脑图工具栏中的 "
+					"Data": "思维导图块只能包含思维导图项块。每个思维导图项都有独立的块 ID，可包含普通内容块及嵌套思维导图，但不能直接包含列表块、列表项块或其他思维导图项块。"
+				}
+			]
+		},
+		{
+			"ID": "20261012014537-ma26lwg",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261012014537-ma26lwg",
+				"updated": "20261012014859"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "详见"
 				},
 				{
 					"Type": "NodeTextMark",
-					"TextMarkType": "kbd",
-					"TextMarkTextContent": "概要"
+					"TextMarkType": "block-ref",
+					"TextMarkBlockRefID": "20210104091228-wdpx6ev",
+					"TextMarkBlockRefSubtype": "s",
+					"TextMarkTextContent": "思维导图块"
 				},
 				{
 					"Type": "NodeText",
-					"Data": "，再选择末端同级节点，即可添加方括号和概要文字。范围必须连续，不能与已有概要重叠或嵌套。移动端也可按相同步骤操作。选择范围时也可使用上下方向键选择末端节点，Enter 确认范围，Esc 取消。"
-				}
-			]
-		},
-		{
-			"ID": "20260926151827-csjz6es",
-			"Type": "NodeParagraph",
-			"Properties": {
-				"id": "20260926151827-csjz6es",
-				"updated": "20260926151827"
-			},
-			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "双击概要文字，或选中概要后点击底部的编辑按钮，即可修改文字；Enter 保存，Esc 取消。可以通过底部工具栏修改颜色或删除概要，也可以按 Delete 删除选中的概要。这些操作均支持撤销和重做。"
-				}
-			]
-		},
-		{
-			"ID": "20260926151827-bcv3d7b",
-			"Type": "NodeParagraph",
-			"Properties": {
-				"id": "20260926151827-bcv3d7b",
-				"updated": "20260926151827"
-			},
-			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "转成列表后，概要隐藏但数据保留，转回脑图后恢复显示。范围内插入的节点自动纳入概要，删除成员或将成员移出范围会缩小范围；剩一个成员仍保留概要，全部删除时一并删除概要。概要文字属于附加说明，不作为可独立搜索或引用的正文块。思源格式的 HTML 和 PDF 预览会显示概要。"
+					"Data": "。"
 				}
 			]
 		},
@@ -2947,7 +3046,7 @@
 			"Children": [
 				{
 					"Type": "NodeText",
-					"Data": "页签块将内容分组显示，点击标题切换，拖拽标题排序，双击标题重命名。支持顶部或左侧布局，选中状态会保存并同步。"
+					"Data": "页签块将内容分组显示，点击标题切换，拖拽标题排序，双击标题重命名。支持顶部或左侧布局，编辑模式的选中状态会保存并同步；锁定编辑的文档会在本地记住阅读位置，不修改默认页签。"
 				}
 			]
 		},
@@ -3065,7 +3164,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20210104090624-jtebaer",
-				"updated": "20260425180520"
+				"updated": "20260928225427"
 			},
 			"Children": [
 				{
@@ -3096,6 +3195,182 @@
 				{
 					"Type": "NodeText",
 					"Data": "。可用于组合文档内连续的内容块，也用于支持横向排版。"
+				}
+			]
+		},
+		{
+			"ID": "20260928225427-nm9hbe6",
+			"Type": "NodeList",
+			"ListData": {},
+			"Properties": {
+				"id": "20260928225427-nm9hbe6",
+				"updated": "20260928225427"
+			},
+			"Children": [
+				{
+					"ID": "20260928225427-k1dee87",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-k1dee87",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-04zhlj8",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-04zhlj8",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "输入 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "/"
+								},
+								{
+									"Type": "NodeText",
+									"Data": "，选择 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "横向超级块"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " 或 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "纵向超级块"
+								},
+								{
+									"Type": "NodeText",
+									"Data": "，即可创建包含两个空段落的左右或上下布局，并在第一个段落开始输入。可以搜索“分栏”找到这两个选项，移动端也可从键盘工具栏的插入面板选择"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20260928225427-duan8en",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-duan8en",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-5hnfex1",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-5hnfex1",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "在超级块的块标菜单中，选择 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "超级块"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "在当前超级块开头添加分栏"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " 或 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "超级块"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "在当前超级块末尾添加分栏"
+								},
+								{
+									"Type": "NodeText",
+									"Data": "，可在横向布局的两端添加空段落；纵向布局对应添加块。新块不会复制现有子块的类型或内容"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20260928225427-eu2cjgj",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-eu2cjgj",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-f7s9zeg",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-f7s9zeg",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "在纵向超级块的直接子块菜单中，选择 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "在左侧创建局部分栏"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " 或 "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "在右侧创建局部分栏"
+								},
+								{
+									"Type": "NodeText",
+									"Data": "，会将当前块和一个新空段落组合成内层横向超级块，其他块保持原布局。局部分栏不改变已有左右插栏快捷键的作用范围"
+								}
+							]
+						}
+					]
 				}
 			]
 		},
@@ -3144,7 +3419,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20200925095848-aon4lem",
-				"updated": "20260906003122"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -3176,7 +3451,7 @@
 			"ListData": {},
 			"Properties": {
 				"id": "20210104090624-vsksysm",
-				"updated": "20260906003122"
+				"updated": "20261016111305"
 			},
 			"Children": [
 				{
@@ -3426,6 +3701,62 @@
 								{
 									"Type": "NodeText",
 									"Data": "页签项块：包含普通内容块及嵌套页签块"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20261016111305-tdchsxm",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20261016111305-tdchsxm",
+						"updated": "20261016111305"
+					},
+					"Children": [
+						{
+							"ID": "20261016111305-a9a64vw",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20261016111305-a9a64vw",
+								"updated": "20261016111305"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "思维导图块：只能包含思维导图项块"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20261016111305-410l2sw",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20261016111305-410l2sw",
+						"updated": "20261016111305"
+					},
+					"Children": [
+						{
+							"ID": "20261016111305-9vyve5m",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20261016111305-9vyve5m",
+								"updated": "20261016111305"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "思维导图项块：包含普通内容块及嵌套思维导图，不能直接包含列表块、列表项块或思维导图项块"
 								}
 							]
 						}

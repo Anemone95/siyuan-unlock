@@ -23,11 +23,11 @@ func TestAPIContractRiffSerialization(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expected, err := json.Marshal(map[string]interface{}{"cards": cards, "unreviewedCount": 3, "unreviewedNewCardCount": 1, "unreviewedOldCardCount": 2})
+		expected, err := json.Marshal(map[string]any{"cards": cards, "unreviewedCount": 3, "unreviewedNewCardCount": 1, "unreviewedOldCardCount": 2})
 		if err != nil {
 			t.Fatal(err)
 		}
-		var got, want interface{}
+		var got, want any
 		if json.Unmarshal(actual, &got) != nil || json.Unmarshal(expected, &want) != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("due card serialization changed: %s != %s", actual, expected)
 		}
@@ -91,8 +91,8 @@ func TestAPIContractRiffEmptyAndMissing(t *testing.T) {
 func TestAPIContractRiffDeckLifecycle(t *testing.T) {
 	previousConf, previousDecks, previousData := model.Conf, model.Decks, util.DataDir
 	model.Conf, model.Decks, util.DataDir = model.NewAppConf(), map[string]*riff.Deck{}, t.TempDir()
-	model.Conf.Flashcard = conf.NewFlashcard()
-	model.Conf.Sync = conf.NewSync()
+	model.Conf.Flashcard.Store(conf.NewFlashcard())
+	model.Conf.Sync.Store(conf.NewSync())
 	t.Cleanup(func() { model.Conf, model.Decks, util.DataDir = previousConf, previousDecks, previousData })
 	if err := os.MkdirAll(filepath.Join(util.DataDir, "storage", "riff"), 0755); err != nil {
 		t.Fatal(err)

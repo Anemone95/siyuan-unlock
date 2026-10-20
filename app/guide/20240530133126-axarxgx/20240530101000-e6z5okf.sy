@@ -8,7 +8,7 @@
 		"id": "20240530101000-e6z5okf",
 		"title": "モバイルアプリ",
 		"type": "doc",
-		"updated": "20260921210136"
+		"updated": "20261016202856"
 	},
 	"Children": [
 		{
@@ -18,7 +18,7 @@
 			"Properties": {
 				"ID": "20240530101000-peznsnc",
 				"id": "20240530101000-2nn9stf",
-				"updated": "20260921210136"
+				"updated": "20261012014930"
 			},
 			"Children": [
 				{
@@ -40,6 +40,21 @@
 					"Data": "SiYuan は Android、iOS、HarmonyOS アプリを提供しており、一部のモバイル アプリ ストアに掲載されています。アプリ ストアで「思源笔记」または「SiYuan」を検索してください。"
 				}
 			]
+		},
+		{
+			"ID": "20261012014537-e3i64fc",
+			"Type": "NodeHeading",
+			"Properties": {
+				"id": "20261012014537-e3i64fc",
+				"updated": "20261012014859"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "画面の操作"
+				}
+			],
+			"HeadingLevel": 2
 		},
 		{
 			"ID": "20260921090531-0l8vdyb",
@@ -79,6 +94,20 @@
 				{
 					"Type": "NodeText",
 					"Data": " で変更できます。"
+				}
+			]
+		},
+		{
+			"ID": "20261010114821-jcdqygo",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261010114821-jcdqygo",
+				"updated": "20261010114821"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "Android でデスクトップレイアウトを使用する場合、システムの戻るボタンは最上位のダイアログ、メニュー、編集用の浮動画面、画像プレビューまたはフローティングドロワーを先に閉じます。1 回の操作で 1 つの画面だけを閉じ、背後の閲覧状態を保持します。閉じられる浮動画面がない場合に、従来のページ移動を行います。"
 				}
 			]
 		},
@@ -153,7 +182,7 @@
 			"Properties": {
 				"ID": "20240530101000-yx7xlm6",
 				"id": "20240530101000-zx8lkgl",
-				"updated": "20260829104731"
+				"updated": "20261016202856"
 			},
 			"Children": [
 				{
@@ -178,7 +207,7 @@
 			"Properties": {
 				"ID": "20240530101000-355qyas",
 				"id": "20240530101000-vg6rjty",
-				"updated": "20260829104731"
+				"updated": "20261016202856"
 			},
 			"Children": [
 				{
@@ -191,7 +220,7 @@
 					"Properties": {
 						"ID": "20240530101000-60p9bne",
 						"id": "20240530101000-502th4f",
-						"updated": "20240530101000"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -200,12 +229,12 @@
 							"Properties": {
 								"ID": "20240530101000-4ca3l4l",
 								"id": "20240530101000-gf939t8",
-								"updated": "20240530101000"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "アプリをアンインストールするとローカルデータが完全に削除され、復旧できなくなります。"
+									"Data": "アプリをアンインストールするとローカルデータが完全に削除され、復旧できなくなります"
 								}
 							]
 						}
@@ -221,7 +250,7 @@
 					"Properties": {
 						"ID": "20240530101000-2vsx7me",
 						"id": "20240530101000-286lfpp",
-						"updated": "20260829104731"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -230,7 +259,7 @@
 							"Properties": {
 								"ID": "20240530101000-8e3p06k",
 								"id": "20240530101000-w6mhqnc",
-								"updated": "20260829104731"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
@@ -253,7 +282,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ から終了してください。スワイプして終了するとデータの同期が行われません。"
+									"Data": "​ から終了してください。スワイプして終了するとデータの同期が行われません"
 								}
 							]
 						}
@@ -269,7 +298,7 @@
 					"Properties": {
 						"ID": "20240530101000-0flh6w7",
 						"id": "20240530101000-yoktfm7",
-						"updated": "20240530101000"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -278,12 +307,12 @@
 							"Properties": {
 								"ID": "20240530101000-f7stnt5",
 								"id": "20240530101000-p0zphjs",
-								"updated": "20240530101000"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "iOS でアプリを切り替えると接続が中断されます。確認ボックスのボタンをクリックして手動で再接続してください。"
+									"Data": "iOS でアプリを切り替えると接続が中断されます。確認ボックスのボタンをクリックして手動で再接続してください"
 								}
 							]
 						}
@@ -299,7 +328,7 @@
 					"Properties": {
 						"ID": "20240530101000-e7wxqk0",
 						"id": "20240530101000-dvacc03",
-						"updated": "20240530101000"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -308,12 +337,12 @@
 							"Properties": {
 								"ID": "20240530101000-e3nl321",
 								"id": "20240530101000-fcln511",
-								"updated": "20240530101000"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "データ同期中はアプリを切り替えず、画面をオンのままにしてください。そうしないとデータ同期が失敗します。"
+									"Data": "データ同期中はアプリを切り替えず、画面をオンのままにしてください。そうしないとデータ同期が失敗します"
 								}
 							]
 						}
@@ -327,7 +356,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260317195514-yho54qh",
-				"updated": "20260613174259"
+				"updated": "20261016202856"
 			},
 			"Children": [
 				{
@@ -358,7 +387,7 @@
 			},
 			"Properties": {
 				"id": "20260317195514-87rztvj",
-				"updated": "20260317202604"
+				"updated": "20261016202856"
 			},
 			"Children": [
 				{
@@ -372,7 +401,7 @@
 					},
 					"Properties": {
 						"id": "20260317195514-31osjhv",
-						"updated": "20260317202604"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -380,12 +409,12 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260317195514-r1jpi3g",
-								"updated": "20260317202604"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "省電力設定を「無制限」に調整しました。"
+									"Data": "省電力設定を「無制限」に調整しました"
 								}
 							]
 						}
@@ -402,7 +431,7 @@
 					},
 					"Properties": {
 						"id": "20260317195514-y0ftv3q",
-						"updated": "20260317195514"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -410,12 +439,12 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260317195514-3yz94lq",
-								"updated": "20260317195514"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
 									"Type": "NodeText",
-									"Data": "通知機能を有効にします。"
+									"Data": "通知機能を有効にします"
 								}
 							]
 						}
@@ -432,7 +461,7 @@
 					},
 					"Properties": {
 						"id": "20260317195514-wy353hn",
-						"updated": "20260317195514"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -440,7 +469,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260317195514-vc2wyly",
-								"updated": "20260317195514"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
@@ -463,7 +492,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "​ という名前のテキストファイルを作成します。このファイル内の各行が、通知メッセージのテキストとして使用されます。"
+									"Data": "​ という名前のテキストファイルを作成します。このファイル内の各行が、通知メッセージのテキストとして使用されます"
 								}
 							]
 						}
@@ -480,7 +509,7 @@
 					},
 					"Properties": {
 						"id": "20260317195514-7q5zeh1",
-						"updated": "20260317195538"
+						"updated": "20261016202856"
 					},
 					"Children": [
 						{
@@ -488,7 +517,7 @@
 							"Type": "NodeParagraph",
 							"Properties": {
 								"id": "20260317195514-4xu3rev",
-								"updated": "20260317195538"
+								"updated": "20261016202856"
 							},
 							"Children": [
 								{
@@ -500,7 +529,7 @@
 								},
 								{
 									"Type": "NodeText",
-									"Data": "機能を使用して、このファイルをAndroidデバイスに同期します。"
+									"Data": "機能を使用して、このファイルをAndroidデバイスに同期します"
 								}
 							]
 						}
@@ -528,7 +557,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20260613174259-xwu9036",
-				"updated": "20260803163243"
+				"updated": "20261004052629"
 			},
 			"Children": [
 				{
@@ -557,7 +586,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20260613174259-djgqfrn",
-				"updated": "20260613174259"
+				"updated": "20261004052629"
 			},
 			"Children": [
 				{
@@ -640,6 +669,79 @@
 							]
 						}
 					]
+				}
+			]
+		},
+		{
+			"ID": "20261004052629-8qyrd3c",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261004052629-8qyrd3c",
+				"updated": "20261004052629"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "新しいショートハンドを取り込む際は、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "設定"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "エディタ"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " の Markdown 構文の有効・無効の設定が適用されます。有効なインライン構文、中点のコードフェンス（"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "···"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "）、全角のタスク簡易構文（"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "【】"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "code",
+					"TextMarkTextContent": "【X】"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "）は取り込み時に変換され、再編集は不要です。"
+				}
+			]
+		},
+		{
+			"ID": "20261004052629-mfqen9u",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261004052629-mfqen9u",
+				"updated": "20261004052629"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "各ショートハンドは個別に解析されるため、閉じられていないコードブロックが次のショートハンドに影響することはありません。取り込み済みのドキュメントは再解析されません。"
 				}
 			]
 		},

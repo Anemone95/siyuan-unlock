@@ -3,6 +3,7 @@ import {readFileSync} from "node:fs";
 import {test} from "node:test";
 import {runInNewContext} from "node:vm";
 import {createSourceFile, isVariableStatement, ModuleKind, ScriptTarget, transpileModule} from "typescript";
+import {DATABASE_ROW_COMMANDS} from "../../command/databaseRowNavigation";
 
 const loadFunction = (path: string, name: string, globals: Record<string, unknown>) => {
     const source = createSourceFile(path, readFileSync(path, "utf8"), ScriptTarget.ES2021, true);
@@ -13,7 +14,9 @@ const loadFunction = (path: string, name: string, globals: Record<string, unknow
         compilerOptions: {module: ModuleKind.CommonJS, target: ScriptTarget.ES2021},
     }).outputText;
     const exports: any = {};
-    runInNewContext(compiled, {exports, ...globals});
+    runInNewContext(compiled, {exports,
+        handleDocumentBoundaryHotkey: () => false, handleDatabaseRowShortcut: () => false,
+        DATABASE_ROW_COMMANDS, ...globals});
     return exports.subject;
 };
 
@@ -30,11 +33,33 @@ const keyboardEvent = (key: string, control: boolean | string = false) => ({
     stopPropagation() { this.propagationStopped = true; },
 });
 
+test("configured settings shortcut opens settings from main and detached document windows", () => {
+    for (const detached of [false, true]) {
+        for (const targetTag of ["DIV", "INPUT"]) {
+            let opened = 0;
+            const bindings = new Proxy({}, {get: (_target, key) => key === "config" ? "custom-settings" : key});
+            const keydown = loadFunction("src/boot/globalEvent/keydown.ts", "windowKeyDown", {
+                filterHotkey: () => false, switchDialog: undefined, searchKeydown: () => false,
+                isWindow: () => detached, bindMenuKeydown: () => false, bindAVPanelKeydown: () => false,
+                document: {body: {}}, getKeymapBindings: (): string[] => [], isNotCtrl: () => false,
+                matchHotKey: (binding: unknown, event: {key: string}) => binding === event.key,
+                EDITOR_FONT_SIZE_COMMANDS: [], openSetting: () => { opened++; },
+                window: {siyuan: {config: {readonly: false, keymap: {general: bindings}}}},
+            });
+            const event = {...keyboardEvent("custom-settings"), target: {tagName: targetTag, closest: (): null => null}};
+            keydown({}, event);
+            assert.equal(opened, 1);
+            assert.equal(event.defaultPrevented, true);
+        }
+    }
+});
+
 test("readonly body and tab header preserve keyboard defaults and bubbling", async () => {
     const bind = loadFunction("src/protyle/wysiwyg/keydown.ts", "keydown", {
         bindVerticalNavigationReset: (): void => undefined,
         getAVTemplateInteractiveElement: () => false,
         hasClosestByAttribute: () => false,
+        handleReadonlyAttributeHotkey: () => false,
     });
     for (const [disabled, header] of [[true, false], [true, true], [false, true]]) {
         let listener: (event: any) => Promise<void>;
@@ -45,6 +70,44 @@ test("readonly body and tab header preserve keyboard defaults and bubbling", asy
             assert.equal(event.defaultPrevented, false, key);
             assert.equal(event.propagationStopped, false, key);
         }
+    }
+});
+
+test("mindmap shortcuts bypass hidden source editing in editable and readonly documents", async () => {
+    let commonCalls = 0;
+    const bind = loadFunction("src/protyle/wysiwyg/keydown.ts", "keydown", {
+        bindVerticalNavigationReset: (): void => undefined,
+        getAVTemplateInteractiveElement: () => false,
+        commonHotkey: (_protyle: unknown, event: any) => {
+            commonCalls++;
+            if (event.key === "copyID") {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        },
+        hasClosestBlock: () => ({}),
+    });
+    for (const disabled of [false, true]) {
+        let listener: (event: any) => Promise<void>;
+        const editor = {addEventListener: (_type: string, callback: typeof listener) => listener = callback};
+        const mindmap = {contains: () => false};
+        bind({disabled}, editor);
+        const before = commonCalls;
+        for (const key of ["commandPanel", "search", "editReadonly", "customShortcut"]) {
+            const event = keyboardEvent(key);
+            event.target.closest = selector => selector === ".mindmap-view" ? mindmap :
+                selector === ".protyle-wysiwyg" ? editor : null;
+            await listener(event);
+            assert.equal(event.defaultPrevented, false, key);
+            assert.equal(event.propagationStopped, false, key);
+        }
+        assert.equal(commonCalls - before, disabled ? 0 : 4);
+        const copy = keyboardEvent("copyID");
+        copy.target.closest = selector => selector === ".mindmap-view" ? mindmap :
+            selector === ".protyle-wysiwyg" ? editor : null;
+        await listener(copy);
+        assert.equal(copy.defaultPrevented, !disabled);
+        assert.equal(copy.propagationStopped, !disabled);
     }
 });
 

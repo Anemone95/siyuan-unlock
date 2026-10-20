@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"strings"
 )
@@ -91,9 +92,7 @@ func (r FileTreeSetPublishRequest) Options() (FileTreePublishOptions, error) {
 }
 func (r FileTreeGetDocRequest) Options() (FileTreeGetDocOptions, error) {
 	fields := make(fileTreeFields, len(r.fields))
-	for key, value := range r.fields {
-		fields[key] = value
-	}
+	maps.Copy(fields, r.fields)
 	var includeDocInfo bool
 	if json.Unmarshal(fields["includeDocInfo"], &includeDocInfo) != nil {
 		delete(fields, "includeDocInfo")
@@ -162,14 +161,10 @@ func init() {
 			if err != nil {
 				return r, err
 			}
-			r.ID, err = legacyField[string](fields, "id", "String", true)
-			if err == nil {
-				r.ID = strings.TrimSpace(r.ID)
-				if r.ID == "" {
-					err = fmt.Errorf("Field [id] must not be empty")
-				}
+			if _, err = legacyField[string](fields, "id", "String", true); err != nil {
+				return r, err
 			}
-			return r, err
+			return fileTreeBind[FileTreeTrimIDRequest](fields)
 		}
 	}
 	RemoveDocByID.decodeRequest = trimIDDecoder(RemoveDocByID.definition.Path)
@@ -193,6 +188,13 @@ func init() {
 		}
 		value, err := fileTreeBind[FileTreeNotebookRequest](r.fields)
 		r.Notebook = value.Notebook
+		if err != nil {
+			return r, err
+		}
+		date, err := fileTreeBind[struct {
+			Date string `json:"date" api:"optional,nullable"`
+		}](r.fields)
+		r.Date = date.Date
 		return r, err
 	}
 	ListDocTree.decodeRequest = func(reader io.Reader) (r FileTreePathRequest, err error) {

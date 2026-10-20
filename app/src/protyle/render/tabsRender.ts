@@ -2,13 +2,17 @@ import {resolveTabID, tabKeyboardTarget} from "./tabsState";
 import {bindTabsDrag, cancelTabsDrag, isDraggingTabs} from "./tabsDrag";
 import {escapeHtml} from "../../util/escape";
 import {clearTabsAttributes, renderTabsAttributes} from "./tabsAttributes";
+import {isHiddenTabContent} from "./tabsVisibility";
 
 export interface ITabsRenderOptions {
+    prepare?: () => void;
     readonly?: (tabs?: Element) => boolean;
     taskReadonly?: (tabs?: Element) => boolean;
     label?: string;
     addLabel?: string;
     select?: (tabs: HTMLElement, id: string) => void;
+    restore?: (tabs: HTMLElement) => string;
+    remember?: (tabs: HTMLElement, id: string) => void;
     activate?: (item: HTMLElement) => void;
     rename?: (item: HTMLElement) => void;
     add?: (tabs: HTMLElement) => void;
@@ -165,6 +169,9 @@ export const tabsRender = (element: Element, options: ITabsRenderOptions = {}) =
             }
             state.active = id;
             state.pending = undefined;
+            if (persist) {
+                controller.options.remember?.(tabs, id);
+            }
             if (persist && !controller.options.readonly?.(tabs)) {
                 controller.options.select?.(tabs, id);
             }
@@ -176,6 +183,7 @@ export const tabsRender = (element: Element, options: ITabsRenderOptions = {}) =
             }
             controller.observer.disconnect();
             controller.resize.disconnect();
+            controller.options.prepare?.();
             const focusedAttributes = document.activeElement?.closest<HTMLElement>(".tabs-attributes");
             const focusedAttributesID = focusedAttributes && element.contains(focusedAttributes) ?
                 focusedAttributes.dataset.blockId : undefined;
@@ -190,7 +198,9 @@ export const tabsRender = (element: Element, options: ITabsRenderOptions = {}) =
                 const source = resolveTabID(ids, tabs.getAttribute("tabs-active-id"));
                 let state = states.get(tabs);
                 if (!state || state.owner !== controller) {
-                    state = {owner: controller, active: source, source, instance: `siyuan-tabs-${++instanceID}`};
+                    const restored = controller.options.restore?.(tabs);
+                    state = {owner: controller, active: ids.includes(restored) ? restored : source,
+                        source, instance: `siyuan-tabs-${++instanceID}`};
                     states.set(tabs, state);
                 }
                 const current = items.find(item => itemID(item) === state.active);
@@ -611,7 +621,7 @@ export const revealTabAncestors = (root: Element, target: Element, persist = tru
     }
     path.forEach(panel => {
         const tabs = panel.parentElement;
-        if (tabs.classList.contains("tabs") && panel.getAttribute("data-tabs-hidden") !== "false") {
+        if (tabs.classList.contains("tabs") && isHiddenTabContent(panel)) {
             roots.get(root)?.select(tabs, itemID(panel), persist);
         }
     });

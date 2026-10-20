@@ -6,7 +6,7 @@
 		"id": "20211226123302-akitvb1",
 		"title": "導入和導出",
 		"type": "doc",
-		"updated": "20260809232000"
+		"updated": "20261016200946"
 	},
 	"Children": [
 		{
@@ -15,7 +15,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20220317223850-m1y2b2z",
-				"updated": "20260803171606"
+				"updated": "20261002211013"
 			},
 			"Children": [
 				{
@@ -30,7 +30,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20220511185953-vjaca7x",
-				"updated": "20260803163402"
+				"updated": "20261002211013"
 			},
 			"Children": [
 				{
@@ -50,6 +50,20 @@
 				{
 					"Type": "NodeText",
 					"Data": "思源支持導入 Markdown 文件。所以如果你需要導入其他筆記軟體的資料，請先將資料轉換為 Markdown 文件。"
+				}
+			]
+		},
+		{
+			"ID": "20261002211013-g6lzmsj",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261002211013-g6lzmsj",
+				"updated": "20261002211013"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "導入 Markdown 時，[^note]: 形式的註腳定義會轉換為獨立的有序清單項目，正文中的 [^note] 會轉換為上標區塊引用。點擊引用可開啟定義，透過定義的反向連結可返回引用它的正文區塊。註腳中的多個段落會保留在同一清單項目內。沒有對應定義的註腳不產生區塊引用，程式碼範例和跳脫的註腳語法保留為字面文字。"
 				}
 			]
 		},
@@ -451,7 +465,7 @@
 			"HeadingLevel": 2,
 			"Properties": {
 				"id": "20220317223850-ar008cn",
-				"updated": "20250115151217"
+				"updated": "20261016200946"
 			},
 			"Children": [
 				{
@@ -554,7 +568,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20220317223850-k4b4s53",
-				"updated": "20260809232000"
+				"updated": "20261016200946"
 			},
 			"Children": [
 				{
@@ -789,6 +803,34 @@
 				{
 					"Type": "NodeText",
 					"Data": " 中的對應選項。"
+				}
+			]
+		},
+		{
+			"ID": "20261015174914-be7kaig",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261015174914-be7kaig",
+				"updated": "20261015174914"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "在「導出為圖片」對話框中，關閉「匯出題頭圖」可排除題頭圖並保留正文圖片。此開關預設開啟，獨立於「新增文件標題」，會記住選擇，並套用於預覽、導出文件和對話框內的「複製為 PNG」。原始文檔不受影響。"
+				}
+			]
+		},
+		{
+			"ID": "20261016200946-3tltm1m",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261016200946-3tltm1m",
+				"updated": "20261016200946"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "PDF 導出也支援獨立的「匯出題頭圖」開關，預設開啟，與圖片導出分別記住選擇，不影響文件標題或正文圖片。桌面端在 PDF 預覽視窗中設定，導出時儲存選擇；行動端在列印設定對話框中設定，確認時儲存選擇。"
 				}
 			]
 		},

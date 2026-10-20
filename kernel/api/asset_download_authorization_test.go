@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/siyuan-note/dejavu"
 	"github.com/siyuan-note/dejavu/cloud"
+	"github.com/siyuan-note/dejavu/entity"
 	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/model"
 	"github.com/siyuan-note/siyuan/kernel/util"
@@ -31,18 +32,18 @@ func TestAPIContractDeferredAssetSymlinkWorkspace(t *testing.T) {
 	testDeferredAssetAPIAuthorizationAndMetadata(t, true)
 }
 
-func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace bool) {
+func setupDeferredAssetAPIWorkspace(t *testing.T, symlinkWorkspace bool, plainContent []byte) (map[string][]byte, []*entity.File) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	originalConf := model.Conf
 	originalWorkspace, originalData, originalRepo := util.WorkspaceDir, util.DataDir, util.RepoDir
 	originalHistory, originalTemp, originalConfDir := util.HistoryDir, util.TempDir, util.ConfDir
-	originalStatusBar := util.StatusBarCfg
+	originalStatusBar := util.StatusBarCfg.Load()
 	t.Cleanup(func() {
 		model.Conf = originalConf
 		util.WorkspaceDir, util.DataDir, util.RepoDir = originalWorkspace, originalData, originalRepo
 		util.HistoryDir, util.TempDir, util.ConfDir = originalHistory, originalTemp, originalConfDir
-		util.StatusBarCfg = originalStatusBar
+		util.StatusBarCfg.Store(originalStatusBar)
 	})
 	base := t.TempDir()
 	if symlinkWorkspace {
@@ -55,13 +56,22 @@ func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace
 	remote := filepath.Join(base, "cloud")
 	key := []byte("0123456789abcdef0123456789abcdef")
 	model.Conf = model.NewAppConf()
-	model.Conf.Sync, model.Conf.Repo, model.Conf.System = conf.NewSync(), conf.NewRepo(), conf.NewSystem()
-	model.Conf.Search, model.Conf.FileTree = conf.NewSearch(), conf.NewFileTree()
-	model.Conf.Sync.Provider, model.Conf.Sync.CloudName, model.Conf.Sync.Enabled = conf.ProviderLocal, "main", true
-	model.Conf.Sync.Local = &conf.Local{Endpoint: remote}
-	model.Conf.Sync.AssetDownloadMode, model.Conf.Repo.Key = 1, key
+	{
+		confSectionValue0, confSectionValue1, confSectionValue2 := conf.NewSync(), conf.NewRepo(), conf.NewSystem()
+		model.Conf.Sync.Store(confSectionValue0)
+		model.Conf.Repo.Store(confSectionValue1)
+		model.Conf.System.Store(confSectionValue2)
+	}
+	{
+		confSectionValue0, confSectionValue1 := conf.NewSearch(), conf.NewFileTree()
+		model.Conf.Search.Store(confSectionValue0)
+		model.Conf.FileTree.Store(confSectionValue1)
+	}
+	model.Conf.Sync.Load().Provider, model.Conf.Sync.Load().CloudName, model.Conf.Sync.Load().Enabled = conf.ProviderLocal, "main", true
+	model.Conf.Sync.Load().Local = &conf.Local{Endpoint: remote}
+	model.Conf.Sync.Load().AssetDownloadMode, model.Conf.Repo.Load().Key = 1, key
 	model.Conf.SetUser(&conf.User{UserId: "asset-api-test", UserSiYuanOneTimePayStatus: 1})
-	util.StatusBarCfg = &util.StatusBar{MsgDataSyncDisabled: true}
+	util.StatusBarCfg.Store(&util.StatusBar{MsgDataSyncDisabled: true})
 	util.WorkspaceDir = filepath.Join(base, "partial")
 	util.DataDir, util.RepoDir = filepath.Join(util.WorkspaceDir, "data"), filepath.Join(util.WorkspaceDir, "repo")
 	util.HistoryDir, util.TempDir = filepath.Join(util.WorkspaceDir, "history"), filepath.Join(util.WorkspaceDir, "temp")
@@ -110,6 +120,9 @@ func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace
 		boxID + "/assets/private.bin": []byte("locked ciphertext fixture"),
 		boxID + "/.siyuan/conf.json":  boxConfData,
 	}
+	if plainContent != nil {
+		files["assets/plain.bin"] = plainContent
+	}
 	for name, data := range files {
 		absPath := filepath.Join(base, "full", "data", filepath.FromSlash(name))
 		if err = os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
@@ -133,6 +146,13 @@ func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace
 	if err != nil || len(deferred) != 2 {
 		t.Fatalf("expected two deferred assets: %+v, %v", deferred, err)
 	}
+	return files, deferred
+}
+
+func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace bool) {
+	t.Helper()
+	files, deferred := setupDeferredAssetAPIWorkspace(t, symlinkWorkspace, nil)
+	const boxID = "20260905123456-abcdefg"
 	statePath := filepath.Join(util.ConfDir, "asset-downloads.json")
 	stateBefore, err := os.ReadFile(statePath)
 	if err != nil {
@@ -248,7 +268,7 @@ func testDeferredAssetAPIAuthorizationAndMetadata(t *testing.T, symlinkWorkspace
 		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), files["assets/plain.bin"]) {
 			t.Fatalf("authorized request failed to retrieve content: %d %s", recorder.Code, recorder.Body.String())
 		}
-		model.Conf.Sync.Enabled = false
+		model.Conf.Sync.Load().Enabled = false
 		model.Conf.SetUser(nil)
 		recorder = request(model.RoleAdministrator, "/api/file/getFile", map[string]string{"path": "data/assets/plain.bin"})
 		if recorder.Code != http.StatusOK || !bytes.Equal(recorder.Body.Bytes(), files["assets/plain.bin"]) {

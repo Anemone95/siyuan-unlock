@@ -49,8 +49,8 @@ func setupAttributeViewValidationTest(t *testing.T) {
 	}
 	Conf = NewAppConf()
 	Conf.Lang = "en"
-	Conf.FileTree = conf.NewFileTree()
-	Conf.Sync = conf.NewSync()
+	Conf.FileTree.Store(conf.NewFileTree())
+	Conf.Sync.Store(conf.NewSync())
 	cache.ClearAVCache()
 	t.Cleanup(func() {
 		cache.ClearAVCache()
@@ -162,7 +162,7 @@ func TestAddAttributeViewBlocksAcceptsDetachedItemsInBatch(t *testing.T) {
 	const itemCount = 100
 	itemIDs := make([]string, 0, itemCount)
 	srcs := make([]map[string]any, 0, itemCount)
-	for i := 0; i < itemCount; i++ {
+	for range itemCount {
 		itemID := ast.NewNodeID()
 		itemIDs = append(itemIDs, itemID)
 		srcs = append(srcs, map[string]any{

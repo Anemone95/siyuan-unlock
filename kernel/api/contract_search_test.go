@@ -9,11 +9,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/88250/lute/parse"
 	"github.com/gin-gonic/gin"
 	"github.com/siyuan-note/siyuan/kernel/apicontract"
 	"github.com/siyuan-note/siyuan/kernel/cache"
 	"github.com/siyuan-note/siyuan/kernel/conf"
+	"github.com/siyuan-note/siyuan/kernel/filesys"
 	"github.com/siyuan-note/siyuan/kernel/model"
+	"github.com/siyuan-note/siyuan/kernel/sql"
+	"github.com/siyuan-note/siyuan/kernel/treenode"
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
@@ -57,7 +61,7 @@ func TestAPIContractSearchPermissions(t *testing.T) {
 
 func TestAPIContractSearchAssetFilters(t *testing.T) {
 	assetsDir := setupAssetContractWorkspace(t)
-	model.Conf.Search = conf.NewSearch()
+	model.Conf.Search.Store(conf.NewSearch())
 	files := []string{"alpha-cover.png", "alpha-note.txt", "beta-cover.PNG", "covers/gamma-cover.webp"}
 	for _, name := range files {
 		path := filepath.Join(assetsDir, filepath.FromSlash(name))
@@ -142,16 +146,18 @@ func TestAPIContractSearchLockedNotebook(t *testing.T) {
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) { c.Set(model.RoleContextKey, model.RoleAdministrator) })
 	engine.POST("/api/search/searchRefBlock", searchRefBlock)
-	recorder := httptest.NewRecorder()
-	engine.ServeHTTP(recorder, httptest.NewRequest("POST", "/api/search/searchRefBlock", strings.NewReader(`{"id":false,"notebook":"`+boxID+`","reqId":7}`)))
-	requireAPIContract(t, "POST", "/api/search/searchRefBlock", recorder)
-	var response struct {
-		Code int             `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != -1 || response.Msg != "encrypted notebook is locked, please unlock it first" || string(response.Data) != `{"reqId":7}` {
-		t.Fatalf("locked ref search order changed: %s, %v", recorder.Body.String(), err)
+	for _, extra := range []string{"", `,"exactDocTitle":true`} {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest("POST", "/api/search/searchRefBlock", strings.NewReader(`{"id":false,"notebook":"`+boxID+`","reqId":7`+extra+`}`)))
+		requireAPIContract(t, "POST", "/api/search/searchRefBlock", recorder)
+		var response struct {
+			Code int             `json:"code"`
+			Msg  string          `json:"msg"`
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != -1 || response.Msg != "encrypted notebook is locked, please unlock it first" || string(response.Data) != `{"reqId":7}` {
+			t.Fatalf("locked ref search order changed: %s, %v", recorder.Body.String(), err)
+		}
 	}
 }
 
@@ -183,6 +189,8 @@ func TestAPIContractSearchPathAndSubtypeCompatibility(t *testing.T) {
 // 搜索查询在契约测试的独立进程内访问临时数据库。
 func testSearchQueryContracts(t *testing.T, docID string) {
 	t.Helper()
+	testSearchAssetMetadataContract(t)
+	testExactRefDocTitleContract(t, docID)
 	for _, entry := range []struct {
 		path, body string
 		handler    gin.HandlerFunc
@@ -212,6 +220,127 @@ func testSearchQueryContracts(t *testing.T, docID string) {
 		}
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != 0 {
 			t.Fatalf("search query failed: %s: %s, %v", path, recorder.Body.String(), err)
+		}
+	}
+}
+
+// 精确标题解析在独立契约测试进程中读取真实文档，覆盖搜索过滤和块命名干扰。
+func testExactRefDocTitleContract(t *testing.T, sourceID string) {
+	t.Helper()
+	previousSearch := model.Conf.Search.Load()
+	search := conf.NewSearch()
+	search.Limit, search.Document, search.Name, search.Alias = 1, false, true, true
+	model.Conf.Search.Store(search)
+	defer model.Conf.Search.Store(previousSearch)
+	for _, item := range []struct{ id, title, name string }{
+		{"20261014000001-refttl1", "target", ""},
+		{"20261014000002-refttl2", "Another document", "Target"},
+		{"20261014000003-refttl3", "Target", ""},
+		{"20261014000004-refttl4", "Äpfel", ""},
+	} {
+		tree := treenode.NewTree("20260912000000-boxapi1", "/"+item.id+".sy", "/"+item.title, item.title)
+		tree.Root.SetIALAttr("name", item.name)
+		if _, err := filesys.WriteTree(tree); err != nil {
+			t.Fatal(err)
+		}
+		treenode.UpsertBlockTree(tree)
+		sql.UpsertTreeQueue(tree)
+	}
+	sql.FlushQueue()
+	engine := gin.New()
+	engine.Use(boxLeaseMiddleware, func(c *gin.Context) { c.Set(model.RoleContextKey, model.RoleAdministrator) })
+	engine.POST("/api/search/searchRefBlock", searchRefBlock)
+	for _, item := range []struct{ title, want string }{
+		{"Target", "20261014000003-refttl3"},
+		{"TARGET", "20261014000001-refttl1"},
+		{"äpfel", "20261014000004-refttl4"},
+		{"missing", ""},
+		{"", ""},
+	} {
+		body, err := json.Marshal(map[string]string{"id": sourceID, "rootID": sourceID, "k": item.title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body = append(body[:len(body)-1], []byte(`,"beforeLen":0,"exactDocTitle":true,"reqId":12}`)...)
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest("POST", "/api/search/searchRefBlock", strings.NewReader(string(body))))
+		requireAPIContract(t, "POST", "/api/search/searchRefBlock", recorder)
+		var response struct {
+			Code int `json:"code"`
+			Data struct {
+				Blocks []*apicontract.SearchBlock `json:"blocks"`
+				NewDoc bool                       `json:"newDoc"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != 0 {
+			t.Fatalf("exact title request failed: %s, %v", recorder.Body.String(), err)
+		}
+		if item.want == "" {
+			if len(response.Data.Blocks) != 0 || response.Data.NewDoc != (item.title != "") {
+				t.Fatalf("absent title response changed: %s", recorder.Body.String())
+			}
+		} else if len(response.Data.Blocks) != 1 || response.Data.Blocks[0].ID != item.want || response.Data.NewDoc {
+			t.Fatalf("wrong title target: %s", recorder.Body.String())
+		}
+	}
+}
+
+// testSearchAssetMetadataContract 在独立数据库中验证图片元数据、文件筛选和分页。
+func testSearchAssetMetadataContract(t *testing.T) {
+	t.Helper()
+	assetsDir := filepath.Join(util.DataDir, "assets")
+	if err := os.MkdirAll(assetsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"metadata-a.png", "metadata-b.webp", "metadata-c.png", "metadata-orphan.png"} {
+		if err := os.WriteFile(filepath.Join(assetsDir, name), []byte("image"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cache.LoadAssets()
+	lute := util.NewLute()
+	tree := parse.Parse("", []byte(`![metadata hint](assets/metadata-a.png "metadata caption") ![other hint](assets/metadata-b.webp "other caption")`), lute.ParseOptions)
+	tree.ID, tree.Box, tree.Path, tree.HPath = tree.Root.ID, "20260912000000-boxapi1", "/"+tree.Root.ID+".sy", "/Images"
+	sql.UpsertTreeQueue(tree)
+	sql.FlushQueue()
+	util.SetAssetText("assets/metadata-c.png", "metadata recognized text")
+	util.SetAssetText("assets/metadata-orphan.png", "metadata orphan text")
+	t.Cleanup(func() {
+		util.SetAssetText("assets/metadata-c.png", "")
+		util.SetAssetText("assets/metadata-orphan.png", "")
+	})
+	engine := gin.New()
+	engine.POST("/api/search/searchAsset", searchAsset)
+	for _, tc := range []struct {
+		body string
+		want []string
+	}{
+		{`{"k":"caption"}`, nil},
+		{`{"k":"caption","includeMetadata":false}`, nil},
+		{`{"k":"caption","includeMetadata":true}`, []string{"assets/metadata-a.png", "assets/metadata-b.webp"}},
+		{`{"k":"other","includeMetadata":true}`, []string{"assets/metadata-b.webp"}},
+		{`{"k":"recognized","includeMetadata":true}`, []string{"assets/metadata-c.png"}},
+		{`{"k":"orphan text","includeMetadata":true,"exts":["webp"]}`, nil},
+		{`{"k":"caption","includeMetadata":true,"exts":["png"],"match":{"mode":"suffix","value":"-a.png"}}`, []string{"assets/metadata-a.png"}},
+		{`{"k":"recognized","includeMetadata":true,"pageSize":1,"page":2}`, nil},
+		{`{"k":"%_'; --","includeMetadata":true}`, nil},
+	} {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest("POST", "/api/search/searchAsset", strings.NewReader(tc.body)))
+		requireAPIContract(t, "POST", "/api/search/searchAsset", recorder)
+		var response struct {
+			Code int                        `json:"code"`
+			Data []*apicontract.SearchAsset `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || response.Code != 0 {
+			t.Fatalf("metadata search failed: %s, %v", recorder.Body.String(), err)
+		}
+		var paths []string
+		for _, asset := range response.Data {
+			paths = append(paths, asset.Path)
+		}
+		if !reflect.DeepEqual(paths, tc.want) {
+			t.Fatalf("metadata search %s: got %v, want %v", tc.body, paths, tc.want)
 		}
 	}
 }

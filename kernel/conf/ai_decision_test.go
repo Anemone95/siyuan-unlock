@@ -1,25 +1,41 @@
 package conf
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestAIDecisionConfiguration(t *testing.T) {
-	ai := &AI{}
+	ai := &AI{Decision: &Decision{Enabled: true, Endpoint: " https://example.com/decision ", APIKey: "legacy-key", Name: "legacy-model", Timeout: 900}}
 	ai.Normalize()
-	if ai.Decision.Enabled || ai.Decision.Timeout != 30 || ai.Decision.Name != "jev-latest" || ai.Decision.Endpoint != "https://api.typesafe.ai/v1/systemone" {
-		t.Fatalf("incorrect defaults: %+v", ai.Decision)
+	if ai.Decision.Provider != "typesafe" || !ai.Decision.Configured() || ai.Decision.Profiles["typesafe"].Timeout != 600 || !ai.Decision.Enabled {
+		t.Fatal("legacy migration failed")
 	}
-	ai.Decision.APIKey = "test-decision-key"
-	ai.Decision.Timeout = 900
+	if ai.Decision.APIKey != "" || ai.Decision.Profiles["openai"].APIKey != "" {
+		t.Fatal("legacy credentials duplicated or leaked")
+	}
+	ai.Decision.Profiles["openai"].APIKey = "openai-key"
+	ai.Decision.Provider = "openai"
 	ai.Normalize()
-	if !ai.Decision.Configured() || ai.Decision.Timeout != 600 {
-		t.Fatal("decision normalization failed")
-	}
 	ai.EncryptAPIKeys()
-	if ai.Decision.APIKey == "test-decision-key" || ai.Decision.APIKey == "" {
-		t.Fatal("decision key not encrypted")
+	if ai.Decision.Profiles["typesafe"].APIKey == "legacy-key" || ai.Decision.Profiles["openai"].APIKey == "openai-key" {
+		t.Fatal("both profiles must be encrypted")
 	}
-	ai.DecryptAPIKeys()
-	if ai.Decision.APIKey != "test-decision-key" || ai.Decision.Enabled {
-		t.Fatal("disabled decision configuration was not preserved")
+	data, err := json.Marshal(ai)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &AI{}
+	if err = json.Unmarshal(data, restored); err != nil {
+		t.Fatal(err)
+	}
+	restored.DecryptAPIKeys()
+	restored.Normalize()
+	if restored.Decision.Profiles["typesafe"].APIKey != "legacy-key" || restored.Decision.Profiles["openai"].APIKey != "openai-key" || restored.Decision.Provider != "openai" {
+		t.Fatal("profile round trip failed")
+	}
+	restored.Decision.Provider = "unknown"
+	if restored.Decision.Configured() {
+		t.Fatal("unknown provider silently accepted")
 	}
 }
