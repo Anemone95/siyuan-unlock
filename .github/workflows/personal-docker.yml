@@ -7,16 +7,9 @@ on:
         description: Source version, such as v3.8.5
         required: true
         type: string
-      unlock_ref:
-        description: Full appdev/siyuan-unlock commit SHA
-        required: true
-        type: string
   workflow_call:
     inputs:
       version:
-        required: true
-        type: string
-      unlock_ref:
         required: true
         type: string
       release_tag:
@@ -42,7 +35,6 @@ jobs:
       - uses: ./siyuan-note/.github/actions/prepare-personal-build
         with:
           version: ${{ inputs.version }}
-          unlock_ref: ${{ inputs.unlock_ref }}
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -57,7 +49,7 @@ jobs:
       - name: Verify account-free sync
         shell: bash
         working-directory: ${{ github.workspace }}/siyuan-note
-        run: bash ../unlock-patches/scripts/check-account-free.sh siyuan
+        run: bash scripts/check-account-free.sh siyuan
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

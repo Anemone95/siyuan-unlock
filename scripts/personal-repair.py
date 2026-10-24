@@ -54,11 +54,6 @@ def context_from_issue(issue):
         return None
     if not all(isinstance(context.get(key), str) and re.fullmatch(r"[0-9a-f]{40}", context[key]) for key in ("upstream_commit", "base_commit", "android_commit")):
         return None
-    if context.get("kind", "merge") not in ("merge", "patch"):
-        return None
-    if context.get("kind") == "patch" and (not isinstance(context.get("unlock_commit"), str)
-            or not re.fullmatch(r"[0-9a-f]{40}", context["unlock_commit"])):
-        return None
     if COPILOT["conflict_marker"](context) not in issue["body"]:
         return None
     return context
@@ -146,7 +141,7 @@ def feedback(pr, comments, key, detail):
     if not token:
         raise ValueError("COPILOT_AGENT_TOKEN is required for automatic Copilot follow-up")
     body = (f"@copilot 当前候选 `{pr['head']['sha']}` 尚未通过完整产物验收。\n\n{detail}\n\n"
-            "请读取具体失败日志，合并最新 master 的验收工作流，保留初始任务的 tag、版本、补丁和恢复语义要求，持续修复并提交新的候选。"
+            "请读取具体失败日志，合并最新 master 的验收工作流，保留初始任务的 tag、版本、解锁功能和恢复语义要求，持续修复并提交新的候选。"
             "修复期间保持草稿；自动控制器会再次构建四个平台，全部产物验收后统一请求维护者审核。\n\n" + marker)
     request(PREFIX + f"issues/{pr['number']}/comments", {"body": body}, token)
     return "Reported the failure to Copilot; the PR remains a draft."
@@ -188,22 +183,16 @@ def verify_artifacts(artifacts, records, head, version, pins, signer):
         raise ValueError("Expired or empty build artifact")
     if set(records) != INPUTS:
         raise ValueError("Missing build provenance")
-    patches = None
     for name, record in records.items():
         if (not isinstance(record, dict) or record.get("source_commit") != head or record.get("source_edits") != {}
-                or record.get("version") != version[1:] or record.get("unlock_commit") != pins["unlock_commit"]):
+                or record.get("version") != version[1:]):
             raise ValueError("Build source mismatch: " + name)
-        selected = record.get("patches")
-        if not isinstance(selected, list) or len(selected) != 5 or any(not isinstance(item, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("sha256", ""))) for item in selected):
-            raise ValueError("Invalid patch provenance: " + name)
-        if patches is not None and record["patches"] != patches:
-            raise ValueError("Platform patch inputs differ")
-        patches = record["patches"]
         if name == "inputs-ios" and record.get("ios_commit") != pins["ios_commit"]:
             raise ValueError("iOS source mismatch")
         if name == "inputs-android" and (record.get("android_commit") != pins["android_commit"]
+                or record.get("unlock_commit") != pins["unlock_commit"]
                 or not re.fullmatch(r"[0-9a-f]{64}", signer) or record.get("android_signer_sha256") != signer):
-            raise ValueError("Android source or signer mismatch")
+            raise ValueError("Android source, shell patches or signer mismatch")
 
 
 def start_build(pr, comments, reason="initial"):

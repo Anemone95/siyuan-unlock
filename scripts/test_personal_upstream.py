@@ -125,19 +125,18 @@ class UpstreamMergeTest(unittest.TestCase):
         args = gh.call_args.args
         self.assertEqual(args[args.index("--ref") + 1], "v3.8.6-unlock.1")
 
-    def test_patch_failure_prevents_push_and_release(self):
+    def test_clean_merge_publishes_the_release_without_delegation(self):
         merge = SYNC.merge_tag
         responses = [{"tag_name": "v3.8.6", "draft": False, "prerelease": False}, [],
                      {"object": {"type": "commit", "sha": self.stable}},
                      {"object": {"type": "commit", "sha": "d" * 40}}]
         with patch.object(SYNC, "api", side_effect=responses), patch.object(SYNC, "gh", return_value="[[]]"), \
                 patch.object(SYNC, "merge_tag", side_effect=lambda root, url, *args: merge(root, str(self.upstream), *args)), \
-                patch.object(SYNC, "check_patches", side_effect=ValueError("Patch conflict")), \
-                patch.object(SYNC, "publish") as publish:
-            with self.assertRaisesRegex(ValueError, "Patch conflict"):
-                SYNC.synchronize(self.source)
-            publish.assert_not_called()
-        self.assertEqual(self.git(self.origin, "rev-parse", "master"), self.start)
+                patch.object(SYNC, "delegate_conflict") as delegate, patch.object(SYNC, "publish") as publish:
+            message = SYNC.synchronize(self.source)
+        delegate.assert_not_called()
+        publish.assert_called_once_with(self.source, "v3.8.6", "v3.8.6-unlock.1")
+        self.assertEqual(message, f"Merged v3.8.6 into master at {self.git(self.source, 'rev-parse', 'HEAD')}; dispatched release v3.8.6-unlock.1.")
 
     def test_merge_conflict_is_delegated_with_exact_context_before_any_push(self):
         (self.source / "common.txt").write_text("personal conflict\n")
@@ -174,28 +173,6 @@ class UpstreamMergeTest(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 SYNC.synchronize(self.source)
             publish.assert_not_called()
-
-    def test_incompatible_unlock_patch_is_delegated_with_original_remote_base(self):
-        merge = SYNC.merge_tag
-        responses = [{"tag_name": "v3.8.6", "draft": False, "prerelease": False}, [],
-                     {"object": {"type": "commit", "sha": self.stable}},
-                     {"object": {"type": "commit", "sha": "d" * 40}}]
-        failure = SYNC.PatchApplicationError("patches/siyuan/default-config.patch", "error: kernel/api/setting.go: patch does not apply")
-        with patch.object(SYNC, "api", side_effect=responses), patch.object(SYNC, "gh", return_value="[[]]"), \
-                patch.object(SYNC, "merge_tag", side_effect=lambda root, url, *args: merge(root, str(self.upstream), *args)), \
-                patch.object(SYNC, "check_patches", side_effect=failure), \
-                patch.object(SYNC, "delegate_conflict", return_value="Copilot patch repair requested") as delegate, \
-                patch.object(SYNC, "publish") as publish:
-            self.assertEqual(SYNC.synchronize(self.source), "Copilot patch repair requested")
-            publish.assert_not_called()
-        context = delegate.call_args.args[1]
-        self.assertEqual(context["base_commit"], self.start)
-        self.assertEqual(context["kind"], "patch")
-        self.assertEqual(context["upstream_commit"], self.stable)
-        self.assertEqual(context["unlock_commit"], self.pins["unlock_commit"])
-        self.assertEqual(context["files"], [failure.patch])
-        self.assertIn("kernel/api/setting.go", context["details"])
-        self.assertEqual(self.git(self.origin, "rev-parse", "master"), self.start)
 
     def test_concurrent_master_update_rejects_both_push_refs_and_dispatch(self):
         self.merge()

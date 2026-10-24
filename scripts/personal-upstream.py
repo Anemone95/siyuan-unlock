@@ -5,15 +5,11 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import subprocess
 import sys
-import tempfile
 
 UPSTREAM = "siyuan-note/siyuan"
 REPOSITORY = "Anemone95/siyuan-unlock"
-BUILD = runpy.run_path(str(Path(__file__).with_name("prepare-personal-build.py")))
-PatchApplicationError = BUILD["PatchApplicationError"]
 
 
 def gh(*args):
@@ -78,20 +74,6 @@ def merge_tag(root, upstream_url, version, expected_commit, android_commit):
     return git(root, "rev-parse", "HEAD")
 
 
-def check_patches(root, version):
-    pins = json.loads((root / "scripts/personal-build-inputs.json").read_text(encoding="utf-8"))
-    if not all(re.fullmatch(r"[0-9a-f]{40}", value) for value in pins.values()):
-        raise ValueError("Build inputs must be pinned to commit SHAs")
-    with tempfile.TemporaryDirectory() as folder:
-        patches = Path(folder) / "patches"
-        git(Path(folder), "clone", "--quiet", "--filter=blob:none", "--no-checkout", "--depth=1",
-            "https://github.com/appdev/siyuan-unlock.git", str(patches))
-        git(patches, "sparse-checkout", "set", "patches")
-        git(patches, "fetch", "--depth=1", "origin", pins["unlock_commit"])
-        git(patches, "checkout", "--detach", "FETCH_HEAD")
-        BUILD["prepare"](root, patches, Path(folder) / "siyuan", version)
-
-
 def delegate_conflict(root, context):
     return subprocess.check_output([sys.executable, str(root / "scripts/personal-copilot.py")],
                                    input=json.dumps(context), text=True).strip()
@@ -132,12 +114,6 @@ def synchronize(root, check_only=False):
         if not conflicts:
             raise
         context["files"] = conflicts
-        return delegate_conflict(root, context)
-    try:
-        check_patches(root, version)
-    except PatchApplicationError as error:
-        pins = json.loads((root / "scripts/personal-build-inputs.json").read_text(encoding="utf-8"))
-        context.update(kind="patch", unlock_commit=pins["unlock_commit"], files=[error.patch], details=error.detail)
         return delegate_conflict(root, context)
     publish(root, version, tag)
     return f"Merged {version} into master at {commit}; dispatched release {tag}."

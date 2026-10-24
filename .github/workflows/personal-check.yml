@@ -76,7 +76,6 @@ jobs:
       - uses: ./siyuan-note/.github/actions/prepare-personal-build
         with:
           version: ${{ steps.inputs.outputs.version }}
-          unlock_ref: ${{ steps.inputs.outputs.unlock_ref }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: siyuan-note/siyuan/kernel/go.mod
@@ -90,8 +89,8 @@ jobs:
           go test -race -timeout 120s ./server/mobiletransport
           go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'
           go test -vet=off -tags fts5 ./mobile -run '^$'
-      - name: Verify unlock patches
-        run: bash unlock-patches/scripts/check-account-free.sh siyuan-note/siyuan
+      - name: Verify account-free sync
+        run: bash siyuan-note/scripts/check-account-free.sh siyuan-note/siyuan
       - name: Test frontend recovery
         working-directory: siyuan-note/siyuan/app
         run: |
@@ -105,7 +104,6 @@ jobs:
     uses: ./.github/workflows/personal-ios.yml
     with:
       version: ${{ needs.recovery.outputs.version }}
-      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
       ios_ref: ${{ needs.recovery.outputs.ios_ref }}
 
   desktop:
@@ -114,7 +112,6 @@ jobs:
     uses: ./.github/workflows/personal-desktop.yml
     with:
       version: ${{ needs.recovery.outputs.version }}
-      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
 
   android:
     if: github.event_name == 'workflow_dispatch' && inputs.full_build
@@ -134,6 +131,5 @@ jobs:
     uses: ./.github/workflows/personal-docker.yml
     with:
       version: ${{ needs.recovery.outputs.version }}
-      unlock_ref: ${{ needs.recovery.outputs.unlock_ref }}
       release_tag: ci-${{ github.run_id }}
       push_image: false
