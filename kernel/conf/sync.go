@@ -41,6 +41,7 @@ func NewSync() *Sync {
 		Mode:                1,
 		GenerateConflictDoc: true,
 		Provider:            ProviderS3,
+		S3:                  &S3{PathStyle: true, SkipTlsVerify: true}, // 默认同步服务的配置容器
 		Interval:            30,
 		LAN:                 &LANSync{MaxConcurrentReqs: 16},
 	}

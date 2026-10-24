@@ -475,23 +475,7 @@ var getPublish = contractHandler(apicontract.GetPublish, func(c *gin.Context, re
 })
 
 var getCloudUser = contractHandler(apicontract.GetCloudUser, func(c *gin.Context, request apicontract.SettingCloudUserRequest) apicontract.Response[*apicontract.SettingUser] {
-	user := &conf.User{
-		UserId:                     "0",
-		UserName:                   "_",
-		UserAvatarURL:              "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-		UserTitles:                 []*conf.UserTitle{},
-		UserCreateTime:             "29991231 00:00:00",
-		UserSiYuanProExpireTime:    -1,
-		UserToken:                  "token",
-		UserTokenExpireTime:        "32503593600",
-		UserSiYuanSubscriptionType: 1,
-		UserSiYuanOneTimePayStatus: 1,
-	}
-	model.Conf.SetUser(user)
-	data, _ := gulu.JSON.MarshalJSON(user)
-	model.Conf.UserData = util.AESEncrypt(string(data))
-	model.Conf.Save()
-	return apicontract.Success(settingUserPayload(user))
+	return apicontract.Success(settingUserPayload(model.ActivateLocalSubscriber()))
 }, func(c *gin.Context) *apicontract.Response[*apicontract.SettingUser] {
 	if model.IsAdminRoleContext(c) {
 		return nil
