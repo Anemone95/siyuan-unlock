@@ -77,14 +77,14 @@ export const iosKernelError = () => {
 };
 
 // 保留事务原文直到响应确认；排队请求等待首次发送，不确定写入保留供核对。
-export const iosTransactionFetch = (url: string, init: RequestInit): Promise<Response> | undefined => {
+export const iosTransactionFetch = (url: string, init: RequestInit, request: typeof fetch = fetch): Promise<Response> | undefined => {
     const recovery = iosRecovery();
     if (!recovery || url !== "/api/transactions") { return undefined; }
     const body = String(init.body || "");
     const id = recovery.beginWrite(body);
     return new Promise<Response>((resolve, reject) => {
         const send = () => {
-            fetch(url, {...init, body}).then(async response => {
+            request(url, {...init, body}).then(async response => {
                 let acknowledged = false;
                 try { acknowledged = response.ok && (await response.clone().json()).code === 0; } catch { /* 保留待确认的原文。 */ }
                 debug("write_response", {id, acknowledged});

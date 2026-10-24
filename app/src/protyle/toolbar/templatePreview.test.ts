@@ -32,6 +32,7 @@ const loadPreview = () => {
     });
     const fetchModule = loadModule("../../util/fetch.ts", {
         "./fetchWithAppId": {fetchWithAppId: () => new Promise<Response>((resolve, reject) => requests.push({resolve, reject}))},
+        "./iosKernelRecovery": {iosRecovery: (): undefined => undefined, iosTransactionFetch: (): undefined => undefined},
         "./processMessage": messagesModule,
         "./fetchTimeout": {withFetchTimeout},
         "../config/setting/pending": {trackSettingRequest},

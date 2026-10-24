@@ -35,7 +35,7 @@ const runCases = async (sources) => {
         "editor/assetOpen": {normalizeAssetOpenConfig: value => value},
         "layout/dock/backlinkRefFilterMenu": {loadBacklinkRefFilterMenu: noop},
         "protyle/render/av/editorSession": {hasAVEditorSession: () => false},
-        "layout/Model": {Model: class {constructor({app}) {this.app = app;} connect() {throw Error("mobile panel opened a desktop socket");}}},
+        "layout/Model": {Model: class {constructor({app}) {this.app = app;} connect() {throw Error("mobile panel opened a desktop socket");} destroy() {}}},
         "util/Tree": {Tree: class {
             constructor(options) {this.element = options.element; this.options = options;}
             updateData() {this.element.replaceChildren();}

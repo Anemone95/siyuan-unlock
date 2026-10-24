@@ -37,7 +37,7 @@ FROM ${GO_IMAGE} AS go-source
 
 RUN <<EORUN
 #!/bin/sh -e
-apk add --no-cache clang lld
+apk add --no-cache gcc musl-dev
 go env -w GO111MODULE=on
 go env -w CGO_ENABLED=1
 EORUN
@@ -47,9 +47,28 @@ ADD kernel/go.* .
 RUN go mod download
 
 ADD kernel/ .
-FROM go-source AS go-build
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    go build -tags "fts5 sqlcipher" -ldflags "-s -w"
+
+FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.7.0@sha256:010d4b66aed389848b0694f91c7aaee9df59a6f20be7f5d12e53663a37bd14e2 AS xx
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS go-build
+COPY --from=xx / /
+
+RUN <<EORUN
+#!/bin/sh -e
+apk add --no-cache clang lld
+go env -w GO111MODULE=on
+go env -w CGO_ENABLED=1
+EORUN
+
+WORKDIR /kernel
+ADD kernel/go.* .
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg \
+    go mod download
+
+ADD kernel/ .
+ARG TARGETPLATFORM
+RUN xx-apk add --no-cache gcc musl-dev
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg \
+    xx-go build -o kernel -tags "fts5 sqlcipher" -ldflags "-s -w" && xx-verify kernel
 
 FROM --platform=$BUILDPLATFORM ${ALPINE_IMAGE} AS onnx-source
 ARG ONNX_COMMIT=3a728b75062256951b6e19ce718907cf1a1d4cf0

@@ -6,12 +6,8 @@ import {isBrowser, isKernelInContainer, isMobile} from "./functions";
 import {isInIOS, isInMobileApp} from "../protyle/util/compatibility";
 import {checkKernelConnection} from "./kernelConnection";
 
-<<<<<<< HEAD
-export const kernelError = () => {
-    if (iosKernelError()) { return; }
-    if (isHostQuitStarted() || document.querySelector("#errorLog")) {
-=======
 export const kernelError = async (isObsolete = () => false) => {
+    if (iosKernelError()) { return; }
     if (isHostQuitStarted() || document.querySelector("#errorLog") || isObsolete()) {
         return;
     }
@@ -19,7 +15,6 @@ export const kernelError = async (isObsolete = () => false) => {
         return;
     }
     if (isHostQuitStarted() || document.querySelector("#errorLog") || isObsolete()) {
->>>>>>> v3.8.8
         return;
     }
     let title: string;

@@ -30,7 +30,7 @@ test("actual Model hooks preserve first callback, message callback and fence lat
  sockets[2].onopen();assert.equal(initialized,2);
  queued.open();queued.message({data:"{}"});assert.equal(messages,2);
 });
-test("feature disabled retains the original 3000 ms retry with one-shot callback",()=>{
+test("feature disabled retains the upstream 3000 ms retry with reconnect callback",()=>{
  const sockets=[],timers=[];let initialized=0;
  globalThis.window={location:{protocol:"http:",host:"local"},siyuan:{config:{},isReady:true}};globalThis.document={getElementById:()=>null};
  globalThis.WebSocket=class {constructor(){sockets.push(this);}close(){}};
@@ -38,6 +38,6 @@ test("feature disabled retains the original 3000 ms retry with one-shot callback
  try{
   const Model=makeModel(()=>undefined,{SIYUAN_APPID:"app"},x=>x,()=>{},()=>{});
   const model=new Model({app:{}});model.connect({id:"id",callback(){initialized++;},msgCallback(){}});sockets[0].onopen();sockets[0].onclose({reason:""});
-  assert.equal(timers[0].delay,3000);timers[0].fn();sockets[1].onopen();assert.equal(initialized,1);
+  assert.equal(timers[0].delay,3000);timers[0].fn();sockets[1].onopen();assert.equal(initialized,2);
  }finally{globalThis.setTimeout=original;}
 });
