@@ -2308,6 +2308,8 @@ export type SystemExitRequestInput = { "execInstallPkg"?: number | null; "force"
 
 export type SystemExportConfData = { "name": string; "zip": string; };
 
+export type SystemFirstLaunchNoticeData = { "acknowledged": boolean; };
+
 export type SystemFont = { "aliases"?: Array<string>; "displayName": string; "family": string; "spacing"?: string; "weight": number; };
 
 export type SystemGlobalGraph = { "d3": SystemD3 | null; "dailyNote": boolean; "minRefs": number; "type": SystemTypeFilter | null; };
@@ -7493,6 +7495,13 @@ export interface APIPOSTRoutes {
         /** 服务器路由要求；资源权限与笔记本租约仍由内核校验 */
         authorization?: readonly ["authenticated","admin"];
     };
+    "/api/system/acknowledgeFirstLaunchNotice": {
+        request: EmptyRequestInput;
+        response: { "code": 0; "data": null; "msg": string; } | { "code": -1; "data": { "closeTimeout": number; } | null; "msg": string; };
+        body: "none";
+        /** 服务器路由要求；资源权限与笔记本租约仍由内核校验 */
+        authorization?: readonly ["authenticated","admin"];
+    };
     "/api/system/addCustomEmoji": {
         request: SystemCustomEmojiRequestInput;
         response: { "code": 0; "data": SystemPathData; "msg": string; } | { "code": -1 | 400 | 413; "data": { "closeTimeout": number; } | null; "msg": string; };
@@ -7629,6 +7638,13 @@ export interface APIPOSTRoutes {
     "/api/system/getEmojiConf": {
         request: EmptyRequestInput;
         response: { "code": 0; "data": Array<SystemEmojiGroup | null> | null; "msg": string; } | { "code": -1; "data": { "closeTimeout": number; } | null; "msg": string; };
+        body: "none";
+        /** 服务器路由要求；资源权限与笔记本租约仍由内核校验 */
+        authorization?: readonly ["authenticated"];
+    };
+    "/api/system/getFirstLaunchNotice": {
+        request: EmptyRequestInput;
+        response: { "code": 0; "data": SystemFirstLaunchNoticeData; "msg": string; } | { "code": -1; "data": { "closeTimeout": number; } | null; "msg": string; };
         body: "none";
         /** 服务器路由要求；资源权限与笔记本租约仍由内核校验 */
         authorization?: readonly ["authenticated"];

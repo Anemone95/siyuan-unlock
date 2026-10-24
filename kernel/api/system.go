@@ -149,6 +149,17 @@ var getChangelog = contractHandler(apicontract.SystemGetChangelog, func(c *gin.C
 	return
 })
 
+var getFirstLaunchNotice = contractHandler(apicontract.SystemGetFirstLaunchNotice, func(c *gin.Context, request apicontract.EmptyRequest) apicontract.Response[apicontract.SystemFirstLaunchNoticeData] {
+	return apicontract.Success(apicontract.SystemFirstLaunchNoticeData{Acknowledged: model.FirstLaunchNoticeAcknowledged()})
+})
+
+var acknowledgeFirstLaunchNotice = contractHandler(apicontract.SystemAcknowledgeFirstLaunchNotice, func(c *gin.Context, request apicontract.EmptyRequest) apicontract.Response[apicontract.Null] {
+	if err := model.AcknowledgeFirstLaunchNotice(); err != nil {
+		return apicontract.Failure[apicontract.Null](-1, err.Error())
+	}
+	return apicontract.Success(apicontract.Null{})
+})
+
 func getChangelogPath(changelogsDir, ver string) string {
 	verDir := filepath.Join(changelogsDir, "v"+ver)
 	changelogPath := filepath.Join(verDir, "v"+ver+"."+model.Conf.Lang+".md")

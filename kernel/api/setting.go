@@ -475,18 +475,23 @@ var getPublish = contractHandler(apicontract.GetPublish, func(c *gin.Context, re
 })
 
 var getCloudUser = contractHandler(apicontract.GetCloudUser, func(c *gin.Context, request apicontract.SettingCloudUserRequest) apicontract.Response[*apicontract.SettingUser] {
-	user, err := model.GetCloudUser(request.Token, request.Cached)
-	data := settingUserPayload(user)
-	if err == nil {
-		return apicontract.Success(data)
+	user := &conf.User{
+		UserId:                     "0",
+		UserName:                   "_",
+		UserAvatarURL:              "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+		UserTitles:                 []*conf.UserTitle{},
+		UserCreateTime:             "29991231 00:00:00",
+		UserSiYuanProExpireTime:    -1,
+		UserToken:                  "token",
+		UserTokenExpireTime:        "32503593600",
+		UserSiYuanSubscriptionType: 1,
+		UserSiYuanOneTimePayStatus: 1,
 	}
-	if model.IsInvalidUserRefresh(err) {
-		return apicontract.GetCloudUser.FailureWithData(255, model.Conf.Language(19), nil)
-	}
-	if model.IsCloudAssetSourceChange(err) {
-		return apicontract.GetCloudUser.FailureWithData(1, err.Error(), data)
-	}
-	return apicontract.GetCloudUser.FailureWithData(1, model.Conf.Language(18), data)
+	model.Conf.SetUser(user)
+	data, _ := gulu.JSON.MarshalJSON(user)
+	model.Conf.UserData = util.AESEncrypt(string(data))
+	model.Conf.Save()
+	return apicontract.Success(settingUserPayload(user))
 }, func(c *gin.Context) *apicontract.Response[*apicontract.SettingUser] {
 	if model.IsAdminRoleContext(c) {
 		return nil

@@ -39,8 +39,8 @@ import (
 )
 
 const (
-	githubReleasesURL            = "https://api.github.com/repos/siyuan-note/siyuan/releases?per_page=100"
-	githubReleaseURLPrefix       = "https://github.com/siyuan-note/siyuan/releases/tag/v"
+	githubReleasesURL            = "https://api.github.com/repos/appdev/siyuan-unlock/releases?per_page=100"
+	githubReleaseURLPrefix       = "https://github.com/appdev/siyuan-unlock/releases/tag/v"
 	githubAPIReleaseCacheSeconds = int64(6 * 60 * 60)
 	maxChecksumManifestSize      = int64(1024 * 1024)
 )
@@ -81,9 +81,6 @@ var (
 
 func getUpdateRelease(force bool) (*updateRelease, error) {
 	channel := Conf.System.Load().UpdateChannel
-	if conf.UpdateChannelStable == channel {
-		return getStableUpdateRelease(force)
-	}
 	if !isValidUpdateChannel(channel) {
 		return nil, errors.New("update channel is invalid")
 	}

@@ -276,7 +276,6 @@ var (
 
 func RefreshCheckJob2H() {
 	go refreshSubscriptionExpirationRemind()
-	go refreshUser()
 	go refreshAnnouncement()
 }
 
