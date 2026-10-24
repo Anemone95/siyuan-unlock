@@ -9,7 +9,7 @@ import {
     isFirstLaunchNoticeEligible,
 } from "./firstLaunchNoticeState";
 
-const RELEASE_URL = "https://github.com/appdev/siyuan-unlock/releases";
+const RELEASE_URL = "https://github.com/Anemone95/siyuan-unlock/releases";
 
 const requestNotice = (path: string) => fetchSyncPost(path, {}, undefined, false);
 

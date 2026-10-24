@@ -73,7 +73,7 @@ func TestStableUpdateUsesUnlockGitHubRelease(t *testing.T) {
 	githubReleasesLock.Lock()
 	originalReleases := cachedGitHubReleases
 	originalCacheTime := githubReleasesCacheTime
-	cachedGitHubReleases = []*githubRelease{{TagName: "v9.9.9"}}
+	cachedGitHubReleases = []*githubRelease{{TagName: "v9.9.9-unlock.1", HTMLURL: "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"}}
 	githubReleasesCacheTime = time.Now().Unix()
 	githubReleasesLock.Unlock()
 
@@ -92,7 +92,7 @@ func TestStableUpdateUsesUnlockGitHubRelease(t *testing.T) {
 	if "9.9.9" != release.Version {
 		t.Fatalf("unexpected stable version: %q", release.Version)
 	}
-	const wantURL = "https://github.com/appdev/siyuan-unlock/releases/tag/v9.9.9"
+	const wantURL = "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"
 	if wantURL != release.ReleaseURL {
 		t.Fatalf("unexpected stable release URL: %q", release.ReleaseURL)
 	}

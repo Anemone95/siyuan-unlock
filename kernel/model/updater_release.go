@@ -39,8 +39,8 @@ import (
 )
 
 const (
-	githubReleasesURL            = "https://api.github.com/repos/appdev/siyuan-unlock/releases?per_page=100"
-	githubReleaseURLPrefix       = "https://github.com/appdev/siyuan-unlock/releases/tag/v"
+	githubReleasesURL            = "https://api.github.com/repos/Anemone95/siyuan-unlock/releases?per_page=100"
+	githubReleaseURLPrefix       = "https://github.com/Anemone95/siyuan-unlock/releases/tag/v"
 	githubAPIReleaseCacheSeconds = int64(6 * 60 * 60)
 	maxChecksumManifestSize      = int64(1024 * 1024)
 )
@@ -312,7 +312,12 @@ func prereleaseChannelLabel(prerelease string) string {
 }
 
 func normalizeReleaseVersion(version string) string {
-	return "v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
+	version = strings.TrimSpace(version)
+	// SiYuan Unlock 发布标签在上游版本后追加 -unlock.N，按对应的上游版本比较。
+	if i := strings.LastIndex(version, "-unlock."); 0 < i {
+		version = version[:i]
+	}
+	return "v" + strings.TrimPrefix(version, "v")
 }
 
 func currentInstallPackageName(version string) string {
