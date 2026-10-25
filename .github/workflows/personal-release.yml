@@ -1,0 +1,356 @@
+name: Release our SiYuan build
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      package_manager: ${{ steps.plan.outputs.package_manager }}
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Plan the release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="v$(jq -r .version app/package.json)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package_manager=$(jq -r .packageManager app/package.json)" >> "$GITHUB_OUTPUT"
+          last=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            --jq "map(.tagName | select(startswith(\"$version-unlock.\")) | ltrimstr(\"$version-unlock.\") | tonumber) | max // 0")
+          # 推送 master 时每个版本自动发布一次；手动运行时构建全部平台，在 master 上发布下一个 -unlock.N。
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$last" != 0 ]; then exit 0; fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = refs/heads/master ]; then
+            echo "tag=$version-unlock.$((last + 1))" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: kernel/go.mod
+          cache-dependency-path: kernel/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test account-free sync and iOS recovery
+        run: |
+          bash scripts/check-account-free.sh .
+          cd kernel
+          go test -race -timeout 120s ./server/mobiletransport
+          go test -vet=off -race -tags fts5 -timeout 120s ./util ./server -run 'Test(PushSession|Recovery|Mobile)'
+          go test -vet=off -tags fts5 ./mobile -run '^$'
+          go test -tags fts5 ./apicontract
+      - name: Test the frontend
+        working-directory: app
+        env:
+          PACKAGE_MANAGER: ${{ steps.plan.outputs.package_manager }}
+        run: |
+          npm install -g "$PACKAGE_MANAGER"
+          pnpm install --frozen-lockfile --ignore-scripts
+          node --test tests/ios*.test.mjs
+          pnpm run typecheck
+          pnpm run lint
+
+  desktop:
+    needs: test
+    if: needs.test.outputs.build
+    strategy:
+      fail-fast: false
+      matrix:
+        # 与上游 cd.yml 的桌面配置一致，不运行端到端测试。
+        config:
+          - {os: ubuntu-24.04, name: ubuntu build linux, kernel_path: ../app/kernel-linux/SiYuan-Kernel, build_args_prefix: -s -w -X, build_args_suffix: Mode=prod, electron_args: dist-linux, goos: linux, goarch: amd64, suffix: linux, e2e_shards: ''}
+          - {os: macos-latest, name: macos build mac.dmg, kernel_path: ../app/kernel-darwin/SiYuan-Kernel, build_args_prefix: -s -w -X, build_args_suffix: Mode=prod, electron_args: dist-darwin, goos: darwin, goarch: amd64, suffix: mac.dmg, e2e_shards: ''}
+          - {os: macos-latest, name: macos build mac-arm64.dmg, kernel_path: ../app/kernel-darwin-arm64/SiYuan-Kernel, build_args_prefix: -s -w -X, build_args_suffix: Mode=prod, electron_args: dist-darwin-arm64, goos: darwin, goarch: arm64, suffix: mac-arm64.dmg, e2e_shards: ''}
+          - {os: windows-latest, name: windows build win.exe, kernel_path: ../app/kernel/SiYuan-Kernel.exe, build_args_prefix: -s -w -X, build_args_suffix: Mode=prod, electron_args: dist, goos: windows, gobin: bin, goarch: amd64, suffix: win.exe, e2e_shards: ''}
+    uses: ./.github/workflows/desktop-build.yml
+    with:
+      config: ${{ toJSON(matrix.config) }}
+      packageManager: ${{ needs.test.outputs.package_manager }}
+
+  android:
+    needs: test
+    if: needs.test.outputs.build
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.test.outputs.version }}
+      PACKAGE_MANAGER: ${{ needs.test.outputs.package_manager }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: siyuan
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: siyuan-note/siyuan-android
+          ref: ${{ needs.test.outputs.version }}
+          path: siyuan-android
+          persist-credentials: false
+      - name: Use our package name and signing key
+        working-directory: siyuan-android
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+        run: |
+          # 包名 top.anemone.siyuan，可与官方版共存。
+          sed -i 's/"org\.b3log\.siyuan"/"top.anemone.siyuan"/' app/build.gradle
+          sed -i 's/targetPackage="org\.b3log\.siyuan"/targetPackage="top.anemone.siyuan"/' app/src/main/res/xml/shortcuts.xml
+          sed -i 's/taskAffinity="org\.b3log\.siyuan\./taskAffinity="top.anemone.siyuan./' app/src/main/AndroidManifest.xml
+          test "$(grep -c '"top.anemone.siyuan"' app/build.gradle)" = 2
+          grep -q 'targetPackage="top.anemone.siyuan"' app/src/main/res/xml/shortcuts.xml
+          grep -q 'taskAffinity="top.anemone.siyuan.shorthand"' app/src/main/AndroidManifest.xml
+          # 与上游 cd.yml 相同，CI 直接使用官方依赖仓库。
+          sed -i '/maven.aliyun.com/d' build.gradle
+          printf '%s' "$KEYSTORE" | base64 -d > app/siyuan.jks
+          cat > signings.gradle <<'EOF'
+          android {
+            signingConfigs {
+              siyuanConfig {
+                storeFile file("siyuan.jks")
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias "siyuan"
+                keyPassword System.getenv("KEYSTORE_PASSWORD")
+              }
+            }
+          }
+          EOF
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: siyuan/kernel/go.mod
+          cache-dependency-path: siyuan/kernel/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build the frontend assets
+        working-directory: siyuan/app
+        run: |
+          npm install -g "$PACKAGE_MANAGER"
+          pnpm install --frozen-lockfile
+          pnpm run build
+          node scripts/trimChangelogs.js
+          python3 ../scripts/prepare-ocr.py
+          zip -qr app.zip appearance guide stage changelogs
+          zip -qj app.zip ../LICENSE ../THIRD_PARTY_NOTICES.md
+          mkdir -p ../../siyuan-android/app/src/main/assets
+          mv app.zip ../../siyuan-android/app/src/main/assets/app.zip
+      - name: Build the kernel
+        working-directory: siyuan/kernel
+        run: |
+          sdkmanagers=("$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager)
+          sdkmanager=${sdkmanagers[-1]}
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "ndk;28.2.13676358" > /dev/null
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          mobile=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile" "golang.org/x/mobile/cmd/gobind@$mobile"
+          gomobile init
+          mkdir -p ../../siyuan-android/app/libs
+          gomobile bind -tags "fts5 sqlcipher" -ldflags "-s -w" -v -o ../../siyuan-android/app/libs/kernel.aar -target android/arm64 -androidapi 26 ./mobile/
+      - name: Build and verify the APK
+        working-directory: siyuan-android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_SHA256: ${{ vars.ANDROID_SIGNING_SHA256 }}
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew assembleOfficialRelease
+          apk=$(echo app/build/outputs/apk/official/release/siyuan-*-official-release.apk)
+          versions=("$ANDROID_HOME"/build-tools/*)
+          tools=${versions[-1]}
+          "$tools/aapt" dump badging "$apk" | grep -F "package: name='top.anemone.siyuan'" | grep -F "versionName='${VERSION#v}'"
+          "$tools/apksigner" verify --print-certs "$apk" | grep -Fi "certificate SHA-256 digest: $ANDROID_SIGNING_SHA256"
+          mkdir -p ../release-assets
+          mv "$apk" "../release-assets/siyuan-unlock-$VERSION-android-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: siyuan-android
+          path: release-assets/*.apk
+          if-no-files-found: error
+
+  ios:
+    needs: test
+    if: needs.test.outputs.build
+    runs-on: macos-15
+    outputs:
+      commit: ${{ steps.shell.outputs.commit }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      VERSION: ${{ needs.test.outputs.version }}
+      PACKAGE_MANAGER: ${{ needs.test.outputs.package_manager }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: siyuan
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Anemone95/siyuan-ios
+          ref: main
+          path: siyuan-ios
+          persist-credentials: false
+      - name: Record the iOS shell commit
+        id: shell
+        run: echo "commit=$(git -C siyuan-ios rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: siyuan/kernel/go.mod
+          cache-dependency-path: siyuan/kernel/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build the frontend assets
+        working-directory: siyuan/app
+        run: |
+          npm install -g "$PACKAGE_MANAGER"
+          pnpm install --frozen-lockfile
+          pnpm run build
+          node scripts/trimChangelogs.js
+          python3 ../scripts/prepare-ocr.py
+          mkdir -p ../../siyuan-ios/app
+          cp -r appearance guide stage changelogs ../../siyuan-ios/app/
+      - name: Build the kernel
+        working-directory: siyuan/kernel
+        run: |
+          mobile=$(go list -m -f '{{.Version}}' golang.org/x/mobile)
+          go install "golang.org/x/mobile/cmd/gomobile@$mobile" "golang.org/x/mobile/cmd/gobind@$mobile"
+          gomobile init
+          gomobile bind -tags "fts5 sqlcipher" -ldflags "-s -w" -v -target=ios/arm64 -o ios/iosk.xcframework ./mobile/
+      - name: Test the Swift recovery coordinator
+        working-directory: siyuan-ios
+        run: |
+          swiftc siyuan-ios/KernelRecoveryCoordinator.swift tests/recovery/main.swift -o "$RUNNER_TEMP/recovery-tests"
+          "$RUNNER_TEMP/recovery-tests"
+      - name: Build the unsigned ipa
+        working-directory: siyuan-ios
+        run: |
+          out="$RUNNER_TEMP/ios"
+          xcodebuild -project siyuan-ios.xcodeproj -scheme siyuan-ios -sdk iphoneos -configuration Release -destination generic/platform=iOS CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon MARKETING_VERSION="${VERSION#v}" -derivedDataPath "$out" build
+          mkdir -p "$out/Payload" ../release-assets
+          cp -R "$out/Build/Products/Release-iphoneos/siyuan-ios.app" "$out/Payload/"
+          test -d "$out/Payload/siyuan-ios.app/PlugIns/ShorthandShare.appex"
+          ditto -c -k --norsrc --keepParent "$out/Payload" "../release-assets/siyuan-$VERSION-ios.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: siyuan-ios
+          path: release-assets/*.ipa
+          if-no-files-found: error
+
+  docker:
+    needs: test
+    if: needs.test.outputs.build
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: amd64, platform: linux/amd64, runner: ubuntu-24.04}
+          - {id: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm}
+          - {id: armv7, platform: linux/arm/v7, runner: ubuntu-24.04}
+    env:
+      TAG: ${{ needs.test.outputs.tag }}
+      ID: ${{ matrix.id }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.id == 'armv7'
+        with:
+          platforms: arm
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: env.TAG
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build the image
+        run: |
+          # 使用上游按相同构建输入发布的 ONNX 运行库镜像。
+          python3 scripts/build-docker-onnx.py --context . --repository b3log/siyuan --platform "$PLATFORM" \
+            --records "$RUNNER_TEMP/onnx" --github-output "$RUNNER_TEMP/onnx.env"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          output=type=cacheonly
+          if [ -n "$TAG" ]; then output="type=image,name=$image,push-by-digest=true,name-canonical=true,push=true"; fi
+          docker buildx build --platform "$PLATFORM" \
+            --build-arg "ONNX_IMAGE=$(sed -n 's/^onnx_image=//p' "$RUNNER_TEMP/onnx.env")" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --metadata-file "$RUNNER_TEMP/metadata.json" --output "$output" .
+          mkdir -p "$RUNNER_TEMP/digests"
+          if [ -n "$TAG" ]; then jq -er '."containerimage.digest"' "$RUNNER_TEMP/metadata.json" > "$RUNNER_TEMP/digests/$ID"; fi
+      - uses: actions/upload-artifact@v4
+        if: env.TAG
+        with:
+          name: digests-${{ matrix.id }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+
+  publish:
+    needs: [test, desktop, android, ios, docker]
+    if: needs.test.outputs.tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.test.outputs.tag }}
+      VERSION: ${{ needs.test.outputs.version }}
+      IOS_COMMIT: ${{ needs.ios.outputs.commit }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: siyuan-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag the Docker image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          mapfile -t digests < <(sed "s|^|$image@|" digests/*)
+          docker buildx imagetools create --tag "$image:$TAG" --tag "$image:latest" "${digests[@]}"
+      - name: Publish the release
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" release-assets/* --notes "$(cat <<EOF
+          Official release: [siyuan-note/siyuan $VERSION](https://github.com/siyuan-note/siyuan/releases/tag/$VERSION)
+          Our changes: [$VERSION...$GITHUB_SHA](https://github.com/$GITHUB_REPOSITORY/compare/$VERSION...$GITHUB_SHA)
+
+          - iOS shell: Anemone95/siyuan-ios@$IOS_COMMIT (unsigned ipa)
+          - Android shell: siyuan-note/siyuan-android@$VERSION, package \`top.anemone.siyuan\`
+          - Docker: \`ghcr.io/${GITHUB_REPOSITORY,,}:$TAG\` (amd64, arm64, armv7)
+          EOF
+          )"
