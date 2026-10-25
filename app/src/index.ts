@@ -67,6 +67,8 @@ import {setTitle} from "./util/processTitle";
 import {ensureUILayout} from "./util/ensureUILayout";
 import {applyEntryVisibility} from "./config/entryVisibility/runtime";
 import {removeBlockPanelEditors} from "./block/panelRemoval";
+import {openChangelog} from "./boot/openChangelog";
+import {openFirstLaunchNotice} from "./boot/firstLaunchNotice";
 import {initializeEnglishCommandTranslations} from "./command/english";
 import {loadLanguages} from "./boot/loadLanguages";
 import {installPluginStorageFetchAppId} from "./util/fetchAppId";
@@ -354,6 +356,8 @@ export class App {
                         await ensureOnboarding();
                         await setNoteBook();
                         await initWindowWithLoading(() => onGetConfig(response.data.start, this), setTabPosition);
+                        await openFirstLaunchNotice();
+                        openChangelog();
                         onSetaccount();
                         setTitle("", true);
                         initMessage();

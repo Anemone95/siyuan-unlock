@@ -149,6 +149,8 @@ func registerSystemRoutes(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/system/checkUpdate", contractRouteHandlers(apicontract.SystemCheckUpdate, checkUpdate)...)
 	ginServer.Handle("POST", "/api/system/exportLog", contractRouteHandlers(apicontract.SystemExportLog, exportLog)...)
 	ginServer.Handle("POST", "/api/system/getChangelog", contractRouteHandlers(apicontract.SystemGetChangelog, getChangelog)...)
+	ginServer.Handle("POST", "/api/system/getFirstLaunchNotice", contractRouteHandlers(apicontract.SystemGetFirstLaunchNotice, getFirstLaunchNotice)...)
+	ginServer.Handle("POST", "/api/system/acknowledgeFirstLaunchNotice", contractRouteHandlers(apicontract.SystemAcknowledgeFirstLaunchNotice, acknowledgeFirstLaunchNotice)...)
 	ginServer.Handle("POST", "/api/system/getNetwork", contractRouteHandlers(apicontract.GetNetwork, getNetwork)...)
 	ginServer.Handle("POST", "/api/system/exportConf", contractRouteHandlers(apicontract.SystemExportConf, exportConf)...)
 	ginServer.Handle("POST", "/api/system/importConf", contractRouteHandlers(apicontract.SystemImportConf, importConf)...)

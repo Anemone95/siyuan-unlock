@@ -28,6 +28,7 @@ func prepareSyncConfigClearTest(t *testing.T) {
 		Conf.Sync.Store(confSectionValue0)
 		Conf.Repo.Store(confSectionValue1)
 	}
+	Conf.Sync.Load().Provider = conf.ProviderSiYuan // 非当前服务用例以思源云为当前服务
 	Conf.Sync.Load().S3 = &conf.S3{Endpoint: "https://s3.example", AccessKey: "access", SecretKey: "secret", Bucket: "notes", Region: "auto"}
 	Conf.Sync.Load().WebDAV = &conf.WebDAV{Endpoint: "https://dav.example", Username: "name", Password: "password"}
 	Conf.Sync.Load().Local = &conf.Local{Endpoint: filepath.Join(root, "cloud")}

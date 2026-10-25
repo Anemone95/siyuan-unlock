@@ -1,4 +1,6 @@
 import {Constants} from "../constants";
+import {iosRecovery} from "../util/iosKernelRecovery";
+import {iosRegisterModel, iosOpenModel} from "../util/iosModelRecovery";
 /// #if !MOBILE
 import type {Tab} from "./Tab";
 /// #endif
@@ -12,6 +14,7 @@ interface IConnectOptions {
 }
 
 export class Model {
+    private recovery = iosRecovery();
     public ws: WebSocket;
     public reqId: number;
     private socketDisposed = false;
@@ -68,10 +71,15 @@ export class Model {
     public connect(options: IConnectOptions) {
         if (this.socketDisposed) return;
         clearTimeout(this.reconnectTimer);
+        if (iosRegisterModel(this.recovery, this, options, () => this.connect({
+            id: options.id, type: options.type, msgCallback: options.msgCallback
+        }))) { return; }
         const websocketURL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
         const ws = new WebSocket(`${websocketURL}?app=${Constants.SIYUAN_APPID}&id=${options.id}${options.type ? "&type=" + options.type : ""}`);
+        this.recovery?.attach(this, ws);
         ws.onopen = () => {
             if (this.socketDisposed || this.ws !== ws) return;
+            if (iosOpenModel(this.recovery, this, ws)) { return; }
             if (options.type === "main") {
                 const {markKernelConnectionAlive}: typeof import("../util/kernelConnection") = require("../util/kernelConnection");
                 markKernelConnectionAlive();
@@ -101,6 +109,7 @@ export class Model {
             }
         };
         ws.onmessage = (event) => {
+            if (this.recovery && !this.recovery.current(this, ws)) { return; }
             if (this.socketDisposed || this.ws !== ws || !options.msgCallback) {
                 return;
             }
@@ -117,6 +126,7 @@ export class Model {
             }
         };
         ws.onclose = (ev) => {
+            if (this.recovery) { this.recovery.disconnect(this, ws, ev.reason); return; }
             if (this.socketDisposed || this.ws !== ws) return;
             if (0 <= ev.reason.indexOf("unauthenticated")) {
                 return;
@@ -130,6 +140,7 @@ export class Model {
             }
         };
         ws.onerror = (err: Event & { target: { url: string, readyState: number } }) => {
+            if (this.recovery) { this.recovery.disconnect(this, ws); return; }
             if (this.socketDisposed || this.ws !== ws) return;
             if (err.target.url.endsWith("&type=main") && err.target.readyState === 3) {
                 const {kernelError}: typeof import("../util/kernelFault") = require("../util/kernelFault");
@@ -144,6 +155,7 @@ export class Model {
     }
 
     public send(cmd: string, param: Record<string, unknown>, process = false) {
+        if (cmd === "closews" && this.recovery) { this.recovery.remove(this); return; }
         if (this.socketDisposed || !this.ws ||
             this.ws.readyState === WebSocket.CLOSING ||
             this.ws.readyState === WebSocket.CLOSED) { // Inbox 无 WebSocket，关闭中的连接不能继续发送
@@ -169,6 +181,7 @@ export class Model {
         this.socketDisposed = true;
         clearTimeout(this.reconnectTimer);
         this.mainMessageQueue.length = 0;
+        this.recovery?.remove(this);
         if (this.ws) {
             this.ws.onopen = null;
             this.ws.onmessage = null;

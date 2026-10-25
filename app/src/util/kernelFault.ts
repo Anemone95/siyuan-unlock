@@ -1,4 +1,5 @@
 import {Constants} from "../constants";
+import {iosKernelError} from "./iosKernelRecovery";
 import {Dialog} from "../dialog";
 import {forceQuit, isHostQuitStarted} from "../dialog/processSystem";
 import {isBrowser, isKernelInContainer, isMobile} from "./functions";
@@ -6,6 +7,7 @@ import {isInIOS, isInMobileApp} from "../protyle/util/compatibility";
 import {checkKernelConnection} from "./kernelConnection";
 
 export const kernelError = async (isObsolete = () => false) => {
+    if (iosKernelError()) { return; }
     if (isHostQuitStarted() || document.querySelector("#errorLog") || isObsolete()) {
         return;
     }

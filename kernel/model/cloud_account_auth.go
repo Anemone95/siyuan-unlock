@@ -22,6 +22,10 @@ func cloudAccountAuthFailureHandler(token string) func() {
 	if requestedUser == nil {
 		return func() {}
 	}
+	// 本地免登录身份没有云端会话，云端认证失败不能清除其同步权限。
+	if requestedUser.UserId == "0" && requestedUser.UserToken == "token" {
+		return func() {}
+	}
 	return func() {
 		cloudAccountMu.Lock()
 		defer cloudAccountMu.Unlock()

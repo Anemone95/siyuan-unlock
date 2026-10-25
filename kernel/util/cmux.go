@@ -27,6 +27,7 @@ func ServeMultiplexed(ln net.Listener, handler http.Handler, certPath, keyPath s
 	certManager, err := getTLSCertManager(certPath, keyPath)
 	if err != nil {
 		logging.LogErrorf("failed to load TLS cert for multiplexing: %s", err)
+		observeServingFailure(ln, err)
 		return nil, nil, err
 	}
 
@@ -48,14 +49,17 @@ func ServeMultiplexed(ln net.Listener, handler http.Handler, certPath, keyPath s
 		httpsServer.Handler = handler
 	}
 
+	if err := prepareMultiplexedHTTP(ln, httpServer, httpsServer, tlsConfig); err != nil {
+		return nil, nil, err
+	}
 	go func() {
-		if serveErr := httpServer.Serve(httpL); serveErr != nil && !errors.Is(serveErr, cmux.ErrListenerClosed) && !errors.Is(serveErr, http.ErrServerClosed) {
+		if serveErr := observeServingFailure(ln, httpServer.Serve(httpL)); serveErr != nil && !errors.Is(serveErr, cmux.ErrListenerClosed) && !errors.Is(serveErr, http.ErrServerClosed) {
 			logging.LogErrorf("multiplexed HTTP server error: %s", serveErr)
 		}
 	}()
 
 	go func() {
-		if serveErr := httpsServer.Serve(tlsListener); serveErr != nil && !errors.Is(serveErr, cmux.ErrListenerClosed) && !errors.Is(serveErr, http.ErrServerClosed) {
+		if serveErr := observeServingFailure(ln, httpsServer.Serve(tlsListener)); serveErr != nil && !errors.Is(serveErr, cmux.ErrListenerClosed) && !errors.Is(serveErr, http.ErrServerClosed) {
 			logging.LogErrorf("multiplexed HTTPS server error: %s", serveErr)
 		}
 	}()

@@ -17,6 +17,7 @@ const loadFetch = (fetchImplementation: typeof fetch) => {
         require: (name: string) => {
             switch (name) {
                 case "./fetchWithAppId": return {fetchWithAppId: fetchImplementation};
+                case "./iosKernelRecovery": return {iosRecovery: (): undefined => undefined, iosTransactionFetch: (): undefined => undefined};
                 case "../constants": return {Constants: {}};
                 case "electron": return {ipcRenderer: {send: () => {}}};
                 case "./processMessage": return {processMessage: (response: {code: number}) => response.code >= 0};

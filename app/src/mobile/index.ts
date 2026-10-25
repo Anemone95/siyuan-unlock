@@ -78,6 +78,7 @@ import {initMobileSelect} from "./util/nativeSelect";
 import {updateMobileTopBarLayout} from "./util/mobileTopBar";
 import {bindMobileOrientationChange} from "./util/orientation";
 import {showMobileBars} from "./util/mobileBars";
+import {openFirstLaunchNotice} from "../boot/firstLaunchNotice";
 import {initializeEnglishCommandTranslations} from "../command/english";
 import {loadLanguages} from "../boot/loadLanguages";
 import {scrollInputIntoView} from "./util/visibleViewport";
@@ -266,12 +267,14 @@ class App {
                             await setNoteBook();
                             await initFramework(this, confResponse.data.start);
                             initRightMenu(this);
-                            openChangelog();
                             window.siyuan.isReady = true;
                             finishMobileSystemUris(this);
                             mainWs.flushMainMessages();
                             completeStartup();
                             fetchPost("/api/setting/getCloudUser", {});
+                            // 启动看门狗结束后再等待用户确认声明，声明关闭后再展示更新日志。
+                            await openFirstLaunchNotice();
+                            openChangelog();
                         }), undefined, startupRequestFailed);
                     }), undefined, startupRequestFailed);
                 }), reportStartupError);

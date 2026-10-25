@@ -31,6 +31,7 @@ import (
 	"github.com/88250/gulu"
 	"github.com/imroc/req/v3"
 	"github.com/siyuan-note/logging"
+	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/util"
 	"golang.org/x/mod/semver"
 )
@@ -301,6 +302,10 @@ var skipInstallPkgPlatformCached = -1
 
 func skipNewVerInstallPkg() bool {
 	confSystemSnapshot := Conf.LoadSystem()
+	// Conf.System.DownloadInstallPkg(自动下载更新安装包) 强制赋值为false
+	if confSystemSnapshot.DownloadInstallPkg {
+		confSystemSnapshot = UpdateSystemConf(func(s *conf.System) { s.DownloadInstallPkg = false })
+	}
 
 	if skipInstallPkgPlatformCached == -1 {
 		skipInstallPkgPlatformCached = 0

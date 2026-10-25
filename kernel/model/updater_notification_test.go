@@ -77,6 +77,7 @@ func installPackageNotifications(t *testing.T) func() []installPackageNotificati
 }
 
 func TestInstallPackageCheckNotifications(t *testing.T) {
+	t.Skip("SiYuan Unlock keeps automatic install package downloads off; see TestUnlockInstallPackageDownloadStaysOff")
 	if currentInstallPackageSuffix() == "" {
 		t.Skip("automatic installation is desktop-only")
 	}

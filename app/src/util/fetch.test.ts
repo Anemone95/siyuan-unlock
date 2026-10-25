@@ -26,6 +26,7 @@ const loadFetchPost = (fetchImplementation: typeof fetch = () => new Promise(() 
         require: (name: string) => {
             switch (name) {
                 case "./fetchWithAppId": return {fetchWithAppId: fetchImplementation};
+                case "./iosKernelRecovery": return {iosRecovery: (): undefined => undefined, iosTransactionFetch: (): undefined => undefined};
                 case "../constants": return {Constants: {SIYUAN_QUIT: "quit"}};
                 case "electron": return {ipcRenderer: {send: (...args: unknown[]) => sends.push(args)}};
                 case "./processMessage": return {processMessage: processResponse};

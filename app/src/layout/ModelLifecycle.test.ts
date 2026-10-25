@@ -28,6 +28,7 @@ test("destroying a main Model cancels reconnects, queued messages and late socke
         setTimeout: (callback: () => void) => { timers.set(1, callback); return 1; },
         clearTimeout: (id: number) => timers.delete(id),
         require: () => ({Constants: {SIYUAN_APPID: "test"}, processMessage: (value: unknown) => value,
+            iosRecovery: (): undefined => undefined, iosRegisterModel: () => false, iosOpenModel: () => false,
             refreshSettingConfig: () => calls.push("refresh")})});
     const model = new exports.Model({app: {}});
     const options = {id: "test", type: "main", callback: () => calls.push("open"), msgCallback: () => calls.push("message")};
@@ -80,6 +81,8 @@ test("main socket recovery is recorded and obsolete sockets cannot finish a faul
         document: {getElementById: (): null => null},
         require: (name: string) => {
             if (name === "../constants") return {Constants: {SIYUAN_APPID: "test"}};
+            if (name === "../util/iosKernelRecovery") return {iosRecovery: (): undefined => undefined};
+            if (name === "../util/iosModelRecovery") return {iosRegisterModel: () => false, iosOpenModel: () => false};
             if (name === "../util/kernelFault") return {kernelError: (obsolete: () => boolean) => diagnoses.push(obsolete)};
             if (name === "../util/kernelConnection") return {markKernelConnectionAlive: () => recovered++};
             throw new Error(name);

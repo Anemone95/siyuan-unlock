@@ -25,6 +25,9 @@ type SystemChangelogData struct {
 	HTML    string `json:"html"`
 	Version string `json:"version"`
 }
+type SystemFirstLaunchNoticeData struct {
+	Acknowledged bool `json:"acknowledged"`
+}
 type SystemCheckUpdateRequest struct {
 	ShowMsg bool `json:"showMsg"`
 }

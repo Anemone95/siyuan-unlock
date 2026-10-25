@@ -12,7 +12,6 @@ import {initTopBarMenu} from "../menus/topBar";
 import {MenuItem} from "../menus/Menu";
 import {hideTooltip} from "../dialog/tooltip";
 import {setMode} from "../util/assets";
-import {openSetting} from "../config";
 import {openSearch} from "../search/spread";
 import type {App} from "../index";
 /// #if !BROWSER
@@ -260,9 +259,6 @@ ${isInMobileApp() ? `<div id="barExit" data-topbar-entry="barExit" class="ft__er
             event.stopPropagation();
                 break;
             } else if (targetId === "toolbarVIP" || targetId === "toolbarTitle") {
-                if (!window.siyuan.config.readonly) {
-                    openSetting(app, "sync");
-                }
                 event.stopPropagation();
                 break;
             } else if (targetId === "barSearch") {

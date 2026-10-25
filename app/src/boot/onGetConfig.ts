@@ -26,7 +26,6 @@ import {replaceLocalPath} from "../editor/rename";
 import {initBar} from "../layout/topBar";
 import {openSetting} from "../config";
 import {mountHelp} from "../util/mount";
-import {openChangelog} from "./openChangelog";
 import type {App} from "../index";
 import {initWindowEvent} from "./globalEvent/event";
 import {sendGlobalShortcut} from "./globalEvent/globalShortcut";
@@ -97,7 +96,6 @@ export const onGetConfig = async (isStart: boolean, app: App) => {
                     /// #if !BROWSER
                     sendGlobalShortcut(app);
                     /// #endif
-                    openChangelog();
                 } catch (e) {
                     resetLayout();
                 }
