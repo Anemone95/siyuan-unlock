@@ -1,5 +1,6 @@
 import {fetchWithAppId} from "./fetchWithAppId";
 import {Constants} from "../constants";
+import {iosRecovery, iosTransactionFetch} from "./iosKernelRecovery";
 /// #if !BROWSER
 import {ipcRenderer} from "electron";
 /// #endif
@@ -12,7 +13,8 @@ import {trackEditorSaveRequest} from "../protyle/util/editorSave";
 import {showMessage} from "../dialog/message";
 
 const reportTransactionFailure = (url: string, error: Error) => {
-    if (url !== "/api/transactions" || error?.name === "AbortError") {
+    // iOS 恢复由原生事件驱动，未确认事务由恢复模块保留并提示核对。
+    if (url !== "/api/transactions" || error?.name === "AbortError" || iosRecovery()) {
         return;
     }
     // 保留当前编辑内容并提示核对保存结果，避免重发已在内核执行的事务。
@@ -58,7 +60,7 @@ export const fetchPost = ((
         init.signal = signal;
     }
     let isGetFile202 = false;
-    return trackEditorSaveRequest(url, data, trackSettingRequest(url, withFetchTimeout((requestSignal) => fetchWithAppId(url, {...init, signal: requestSignal}).then((response): Promise<IWebSocketData | string> | IWebSocketData => {
+    return trackEditorSaveRequest(url, data, trackSettingRequest(url, withFetchTimeout((requestSignal) => (iosTransactionFetch(url, {...init, signal: requestSignal}, fetchWithAppId) || fetchWithAppId(url, {...init, signal: requestSignal})).then((response): Promise<IWebSocketData | string> | IWebSocketData => {
         switch (response.status) {
             case 403:
             case 404:
@@ -68,6 +70,7 @@ export const fetchPost = ((
                     code: -response.status,
                 };
             case 401:
+                if (iosRecovery()) { kernelError(); return {data: null, msg: response.statusText, code: -401}; }
                 // 返回鉴权失败的话直接刷新页面，避免用户在当前页面操作 https://github.com/siyuan-note/siyuan/issues/15163
                 setTimeout(() => {
                     window.location.reload();
@@ -88,7 +91,7 @@ export const fetchPost = ((
                     return response.text();
                 }
         }
-    }), signal, timeout), url === "/api/storage/setLocalStorageVal" && data?.key === Constants.LOCAL_SLASH_USAGE)).catch(error => {
+    }), signal, iosRecovery() && url === "/api/transactions" ? 0 : timeout), url === "/api/storage/setLocalStorageVal" && data?.key === Constants.LOCAL_SLASH_USAGE)).catch(error => {
         reportTransactionFailure(url, error);
         throw error;
     }).then((response: IWebSocketData) => {
@@ -154,7 +157,7 @@ export const fetchSyncPost = (async (url: string, data?: any, headers?: Record<s
         }
     }
     return trackSettingRequest(url, trackEditorSaveRequest(url, data,
-        fetchWithAppId(url, init).then(res => res.json() as Promise<IWebSocketData>)).catch(error => {
+        (iosTransactionFetch(url, init, fetchWithAppId) || fetchWithAppId(url, init)).then(res => res.json() as Promise<IWebSocketData>)).catch(error => {
         reportTransactionFailure(url, error);
         throw error;
     }).then(res2 => {

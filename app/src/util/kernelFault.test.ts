@@ -17,6 +17,7 @@ const fixture = (platform = "desktop", probe: () => Promise<boolean> = async () 
     }
     const dependencies: Record<string, unknown> = {
         "../constants": {Constants: {SIYUAN_VERSION: "test", DIALOG_KERNELFAULT: "dialog-kernelfault"}},
+        "./iosKernelRecovery": {iosKernelError: () => false},
         "../dialog": {Dialog},
         "../dialog/processSystem": {isHostQuitStarted: () => state.quitting},
         "./functions": {isBrowser: () => platform === "browser", isMobile: () => platform === "mobile",

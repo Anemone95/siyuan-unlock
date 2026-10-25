@@ -56,6 +56,7 @@ test("shared fetch helpers attach the caller and preserve payloads", async () =>
         const {calls, fetchWithAppId} = fixture();
         const api = load("src/util/fetch.ts", {FormData, console, setTimeout}, {
             "./fetchWithAppId": {fetchWithAppId},
+            "./iosKernelRecovery": {iosRecovery: (): undefined => undefined, iosTransactionFetch: (): undefined => undefined},
             "../constants": {Constants: {}},
             electron: {ipcRenderer: {}},
             "./processMessage": {processMessage: () => true},

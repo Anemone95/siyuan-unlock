@@ -1448,6 +1448,7 @@ var SystemGetCaptcha = define[EmptyRequest, BinaryContent]("getCaptcha", "/api/s
 
 // SystemOIDCCallback 从 URL 查询参数读取 state、code 和 error，验证登录事务及会话绑定，不读取请求体。
 var SystemOIDCCallback = define[EmptyRequest, BinaryContent]("oidcCallback", "/api/system/oidc/callback", PublicAccess, NoBody, HTTPContentOptions(HTTPContentVariant{Status: 200, ContentType: "text/html"}), "GET")
+var SystemAcknowledgeFirstLaunchNotice = define[EmptyRequest, Null]("acknowledgeFirstLaunchNotice", "/api/system/acknowledgeFirstLaunchNotice", AuthenticatedAccess|AdminAccess, NoBody, ResponseOptions{}, "POST")
 var SystemAddCustomEmoji = define[SystemCustomEmojiRequest, SystemPathData]("addCustomEmoji", "/api/system/addCustomEmoji", AuthenticatedAccess|AdminAccess|WritableAccess, FormBody, ResponseOptions{AdditionalCodes: []int{400, 413}}, "POST")
 var SystemCheckUpdate = define[SystemCheckUpdateRequest, Null]("checkUpdate", "/api/system/checkUpdate", AuthenticatedAccess|AdminAccess, JSONBody, ResponseOptions{}, "POST")
 var SystemCheckWorkspaceDir = define[SystemPathRequest, SystemWorkspaceCheckData]("checkWorkspaceDir", "/api/system/checkWorkspaceDir", AuthenticatedAccess|AdminAccess|WritableAccess, JSONBody, ResponseOptions{}, "POST")
@@ -1469,6 +1470,7 @@ var SystemGetChangelog = define[SystemChangelogRequest, SystemChangelogData]("ge
 var SystemGetConf = define[EmptyRequest, SystemConfData]("getConf", "/api/system/getConf", AuthenticatedAccess, NoBody, ResponseOptions{}, "POST")
 var SystemGetCustomFonts = define[EmptyRequest, []*SystemCustomFont]("getCustomFonts", "/api/system/getCustomFonts", AuthenticatedAccess, NoBody, ResponseOptions{}, "POST")
 var SystemGetEmojiConf = define[EmptyRequest, []*SystemEmojiGroup]("getEmojiConf", "/api/system/getEmojiConf", AuthenticatedAccess, NoBody, ResponseOptions{}, "POST")
+var SystemGetFirstLaunchNotice = define[EmptyRequest, SystemFirstLaunchNoticeData]("getFirstLaunchNotice", "/api/system/getFirstLaunchNotice", AuthenticatedAccess, NoBody, ResponseOptions{}, "POST")
 var SystemGetMobileWorkspaces = define[EmptyRequest, []string]("getMobileWorkspaces", "/api/system/getMobileWorkspaces", AuthenticatedAccess|AdminAccess, NoBody, ResponseOptions{}, "POST")
 var SystemGetSysFonts = define[EmptyRequest, []*SystemFont]("getSysFonts", "/api/system/getSysFonts", AuthenticatedAccess|AdminAccess, NoBody, ResponseOptions{}, "POST")
 var SystemGetWorkspaces = define[EmptyRequest, []*SystemWorkspace]("getWorkspaces", "/api/system/getWorkspaces", AuthenticatedAccess, NoBody, ResponseOptions{}, "POST")

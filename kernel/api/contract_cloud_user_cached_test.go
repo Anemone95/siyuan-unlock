@@ -12,6 +12,7 @@ import (
 )
 
 func TestAPIContractSettingCloudUserCached(t *testing.T) {
+	t.Skip("SiYuan Unlock returns the local subscriber to administrators; see TestUnlockGetCloudUserPersistsIdentity")
 	previous := model.Conf
 	model.Conf = model.NewAppConf()
 	t.Cleanup(func() { model.Conf = previous })

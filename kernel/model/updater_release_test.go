@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/util"
@@ -59,6 +60,41 @@ func TestGetUpdatePackageURLsPreservesReleaseAssetURL(t *testing.T) {
 	}
 	if got := getUpdatePackageURLs(pkgName, githubURL); !slices.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestStableUpdateUsesUnlockGitHubRelease(t *testing.T) {
+	originalConf := Conf
+	Conf = NewAppConf()
+	system := conf.NewSystem()
+	system.UpdateChannel = conf.UpdateChannelStable
+	Conf.System.Store(system)
+
+	githubReleasesLock.Lock()
+	originalReleases := cachedGitHubReleases
+	originalCacheTime := githubReleasesCacheTime
+	cachedGitHubReleases = []*githubRelease{{TagName: "v9.9.9-unlock.1", HTMLURL: "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"}}
+	githubReleasesCacheTime = time.Now().Unix()
+	githubReleasesLock.Unlock()
+
+	t.Cleanup(func() {
+		Conf = originalConf
+		githubReleasesLock.Lock()
+		cachedGitHubReleases = originalReleases
+		githubReleasesCacheTime = originalCacheTime
+		githubReleasesLock.Unlock()
+	})
+
+	release, err := getUpdateRelease(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "9.9.9" != release.Version {
+		t.Fatalf("unexpected stable version: %q", release.Version)
+	}
+	const wantURL = "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"
+	if wantURL != release.ReleaseURL {
+		t.Fatalf("unexpected stable release URL: %q", release.ReleaseURL)
 	}
 }
 

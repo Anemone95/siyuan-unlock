@@ -73,7 +73,7 @@ type Onboarding struct {
 func NewSystem() *System {
 	return &System{
 		NetworkProxy:       &NetworkProxy{},
-		DownloadInstallPkg: true,
+		DownloadInstallPkg: false,
 		UpdateChannel:      UpdateChannelStable,
 	}
 }
