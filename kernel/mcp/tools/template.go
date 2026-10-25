@@ -18,11 +18,9 @@ package tools
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/siyuan-note/siyuan/kernel/model"
-	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
 var TemplateTool = &Tool{
@@ -36,7 +34,7 @@ var TemplateTool = &Tool{
 			"path":      {Type: "string", Description: "Template file path as returned by search (for get, remove, render)"},
 			"id":        {Type: "string", Description: "Block ID (for render, save_as)"},
 			"name":      {Type: "string", Description: "Template name without extension (for save_as, create)"},
-			"content":   {Type: "string", Description: "Markdown content (for create)"},
+			"content":   {Type: "string", Description: "Markdown content (for create).\n\n" + markdownContentSyntax},
 			"overwrite": {Type: "boolean", Description: "Overwrite if exists (for save_as, create, default false)"},
 		},
 		Required: []string{"action"},
@@ -78,29 +76,12 @@ func templateSearch(args map[string]any) (CallToolResult, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Templates (%d):\n\n", len(results)))
+	fmt.Fprintf(&sb, "Templates (%d):\n\n", len(results))
 	for _, r := range results {
-		sb.WriteString(fmt.Sprintf("- %s\n", r.Content))
-		sb.WriteString(fmt.Sprintf("  path: %s\n", r.Path))
+		fmt.Fprintf(&sb, "- %s\n", r.Content)
+		fmt.Fprintf(&sb, "  path: %s\n", r.Path)
 	}
 	return CallToolResult{Content: []ContentItem{{Type: "text", Text: sb.String()}}}, nil
-}
-
-func resolveTemplatePath(p string) (string, error) {
-	if p == "" {
-		return "", fmt.Errorf("path is required")
-	}
-	abs := p
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(util.DataDir, "templates", p)
-	}
-	abs = filepath.Clean(abs)
-	templatesBase := filepath.Clean(filepath.Join(util.DataDir, "templates"))
-	rel, err := filepath.Rel(templatesBase, abs)
-	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
-		return "", fmt.Errorf("path escapes templates dir: %s", p)
-	}
-	return abs, nil
 }
 
 func templateGet(args map[string]any) (CallToolResult, error) {
@@ -114,7 +95,7 @@ func templateGet(args map[string]any) (CallToolResult, error) {
 
 func templateRemove(args map[string]any) (CallToolResult, error) {
 	p, _ := args["path"].(string)
-	abs, err := resolveTemplatePath(p)
+	abs, err := model.ResolveTemplatePath(p)
 	if err != nil {
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: err.Error()}}, IsError: true}, nil
 	}
@@ -130,7 +111,7 @@ func templateRender(args map[string]any) (CallToolResult, error) {
 	if id == "" {
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: "id is required"}}, IsError: true}, nil
 	}
-	abs, err := resolveTemplatePath(p)
+	abs, err := model.ResolveTemplatePath(p)
 	if err != nil {
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: err.Error()}}, IsError: true}, nil
 	}

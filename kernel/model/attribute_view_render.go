@@ -404,23 +404,39 @@ func getAttributeViewPasteRowsFromTable(table *av.Table, startItemID string, cou
 }
 
 func RenderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pageSize int, groupPaging map[string]any, initialLayout av.LayoutType, createIfNotExist, ignoreRows bool, targetItemID, targetGroupID string, calendarRanges ...*av.CalendarRange) (viewable av.Viewable, attrView *av.AttributeView, target *AttributeViewRenderTarget, err error) {
-	return renderAttributeViewWithTarget(blockID, avID, viewID, query, page, pageSize, groupPaging, initialLayout, createIfNotExist, ignoreRows, targetItemID, targetGroupID, true, calendarRanges...)
+	options := AttributeViewRenderOptions{}
+	if len(calendarRanges) > 0 {
+		options.CalendarRange = calendarRanges[0]
+	}
+	return RenderAttributeViewWithTargetOptions(blockID, avID, viewID, query, page, pageSize, groupPaging, initialLayout, createIfNotExist, ignoreRows, targetItemID, targetGroupID, options)
 }
 
 // RenderAttributeViewWithTargetReadOnly 仅在内存中渲染发布视图，不创建或保存数据库。
 func RenderAttributeViewWithTargetReadOnly(blockID, avID, viewID, query string, page, pageSize int, groupPaging map[string]any, initialLayout av.LayoutType, createIfNotExist, ignoreRows bool, targetItemID, targetGroupID string, calendarRanges ...*av.CalendarRange) (viewable av.Viewable, attrView *av.AttributeView, target *AttributeViewRenderTarget, err error) {
-	return renderAttributeViewWithTarget(blockID, avID, viewID, query, page, pageSize, groupPaging, initialLayout, false, ignoreRows, targetItemID, targetGroupID, false, calendarRanges...)
+	options := AttributeViewRenderOptions{ReadOnly: true}
+	if len(calendarRanges) > 0 {
+		options.CalendarRange = calendarRanges[0]
+	}
+	return RenderAttributeViewWithTargetOptions(blockID, avID, viewID, query, page, pageSize, groupPaging, initialLayout, false, ignoreRows, targetItemID, targetGroupID, options)
 }
 
-func renderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pageSize int, groupPaging map[string]any, initialLayout av.LayoutType, createIfNotExist, ignoreRows bool, targetItemID, targetGroupID string, writable bool, calendarRanges ...*av.CalendarRange) (viewable av.Viewable, attrView *av.AttributeView, target *AttributeViewRenderTarget, err error) {
+// AttributeViewRenderOptions 仅影响本次渲染，不参与数据库持久化。
+type AttributeViewRenderOptions struct {
+	ReadOnly      bool
+	CalendarRange *av.CalendarRange
+	TemporarySort *av.ViewSort
+}
+
+// RenderAttributeViewWithTargetOptions 在分页前应用临时排序；临时排序和只读请求均不创建或保存数据库。
+func RenderAttributeViewWithTargetOptions(blockID, avID, viewID, query string, page, pageSize int, groupPaging map[string]any, initialLayout av.LayoutType, createIfNotExist, ignoreRows bool, targetItemID, targetGroupID string, options AttributeViewRenderOptions) (viewable av.Viewable, attrView *av.AttributeView, target *AttributeViewRenderTarget, err error) {
+	writable := !options.ReadOnly && options.TemporarySort == nil
+	createIfNotExist = createIfNotExist && writable
 	if !ast.IsNodeIDPattern(avID) {
 		err = ErrInvalidID
 		return
 	}
-	if len(calendarRanges) > 0 {
-		if _, err = calendarRanges[0].Location(); nil != err {
-			return
-		}
+	if _, err = options.CalendarRange.Location(); nil != err {
+		return
 	}
 
 	waitForSyncingStorages()
@@ -431,26 +447,9 @@ func renderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pa
 		return
 	}
 
-	// 已知载体时只在同一加密边界内查找；无载体的兼容调用保留全局回退。
-	var existPath string
-	if exactBox {
-		existPath, _ = av.FindAttributeViewPathInBox(avID, avBoxID)
-	} else {
-		existPath, _ = av.FindAttributeViewPath(avID)
-	}
-	if "" == existPath {
-		if exactBox {
-			if foreignPath, foreignBoxID := av.FindAttributeViewPath(avID); "" != foreignPath &&
-				foreignBoxID != avBoxID {
-				err = av.ErrAttributeViewNotFound
-				return
-			}
-		}
-		if avBoxID != "" {
-			existPath = filepath.Join(util.DataDir, avBoxID, "storage", "av", avID+".json")
-		} else {
-			existPath = av.GetAttributeViewDataPath(avID)
-		}
+	existPath, err := attributeViewRenderPath(avID, avBoxID, exactBox)
+	if nil != err {
+		return
 	}
 	if !filelock.IsExist(existPath) {
 		if !createIfNotExist {
@@ -458,22 +457,11 @@ func renderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pa
 			return
 		}
 
-		// 加密笔记本首次创建：仅设置 pending 用于 SaveAttributeView 路径路由，创建后立即清除
-		if avBoxID != "" {
-			av.SetAVBoxID(avID, avBoxID)
-			defer av.SetAVBoxID(avID, "") // 创建完成立即清除，避免污染后续路由
-		}
-		attrView = newAttributeViewWithLayout(avID, initialLayout)
-		if err = av.SaveAttributeView(attrView); err != nil {
-			logging.LogErrorf("save attribute view [%s] failed: %s", avID, err)
+		if attrView, err = initializeAttributeViewForRender(blockID, avID, avBoxID, exactBox, initialLayout); nil != err {
+			logging.LogErrorf("initialize attribute view [%s] failed: %s", avID, err)
 			return
 		}
-		if blockID != "" {
-			av.UpsertBlockRel(avID, blockID)
-		}
-	}
-
-	if exactBox {
+	} else if exactBox {
 		attrView, err = av.ParseAttributeViewInBox(avID, avBoxID)
 	} else {
 		attrView, err = av.ParseAttributeView(avID)
@@ -482,6 +470,22 @@ func renderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pa
 		logging.LogErrorf("parse attribute view [%s] failed: %s", avID, err)
 		return
 	}
+	if temporarySort := options.TemporarySort; temporarySort != nil {
+		if temporarySort.Order != av.SortOrderAsc && temporarySort.Order != av.SortOrderDesc {
+			err = fmt.Errorf("invalid temporary sort order [%s]", temporarySort.Order)
+			return
+		}
+		view, viewErr := getRenderAttributeViewView(attrView, viewID, "", blockID, false)
+		if viewErr != nil {
+			err = viewErr
+			return
+		}
+		// 字段删除或不再支持排序时恢复已保存规则，避免阅读状态阻断数据库显示。
+		if key, keyErr := attrView.GetKey(temporarySort.Column); keyErr == nil && av.GetKeyCapability(key.Type).Sortable {
+			sort := *temporarySort
+			view.Sorts = []*av.ViewSort{&sort}
+		}
+	}
 	if targetItemID != "" {
 		target = &AttributeViewRenderTarget{Status: "itemNotFound", ItemID: targetItemID}
 		if nil != attrView.GetBlockValue(targetItemID) {
@@ -489,13 +493,7 @@ func renderAttributeViewWithTarget(blockID, avID, viewID, query string, page, pa
 		}
 	}
 
-	// 诊断：AV 解析后的数据量
-	blockKV := attrView.GetBlockKeyValues()
-	if nil != blockKV {
-	} else {
-	}
-
-	viewable, err = renderAttributeView(attrView, blockID, viewID, "", query, page, pageSize, groupPaging, ignoreRows, writable, target, targetGroupID, calendarRanges...)
+	viewable, err = renderAttributeView(attrView, blockID, viewID, "", query, page, pageSize, groupPaging, ignoreRows, writable, target, targetGroupID, options.CalendarRange)
 	return
 }
 
@@ -523,7 +521,7 @@ const (
 )
 
 func renderAttributeView(attrView *av.AttributeView, nodeID, viewID, carrierViewID, query string, page, pageSize int, groupPaging map[string]any, ignoreRows, writable bool, target *AttributeViewRenderTarget, targetGroupID string, calendarRanges ...*av.CalendarRange) (viewable av.Viewable, err error) {
-	if err = attrView.ValidateListLayouts(); nil != err {
+	if err = attrView.ValidateLayouts(); nil != err {
 		return
 	}
 	// 获取待渲染的视图
@@ -878,7 +876,7 @@ func sortGroupViews(attrView *av.AttributeView, view *av.View) {
 			startIdx = 0
 		}
 		for _, g := range lastNext30Days {
-			relativeDateGroups = util.InsertElem(relativeDateGroups, startIdx, g)
+			relativeDateGroups = slices.Insert(relativeDateGroups, startIdx, g)
 		}
 
 		if av.GroupOrderDesc == view.Group.Order {
@@ -992,6 +990,11 @@ func shouldDeferAttributeViewTemplateValues(attrView *av.AttributeView, view *av
 		}
 	}
 	if 0 == len(templateKeyIDs) && 0 == len(renderTemplateKeyIDs) {
+		return false
+	}
+	// 日历日期模板参与区间筛选和定位，必须在筛选条目之前完成计算。
+	if view.LayoutType == av.LayoutTypeCalendar && view.Calendar != nil &&
+		renderTemplateKeyIDs[view.Calendar.Settings.DateKeyID] {
 		return false
 	}
 
@@ -1150,7 +1153,7 @@ func findAttributeViewTargetIndex(targetItemID string, length int, getID func(in
 	if targetItemID == "" {
 		return -1
 	}
-	for i := 0; i < length; i++ {
+	for i := range length {
 		if getID(i) == targetItemID {
 			return i
 		}
@@ -1405,12 +1408,8 @@ func RenderRepoSnapshotAttributeView(indexID, avID, viewID, carrierViewID string
 		return
 	}
 
-	attrView = av.NewAttributeView(avID)
-	if err = gulu.JSON.UnmarshalJSON(data, attrView); err != nil {
-		logging.LogErrorf("unmarshal attribute view [%s] failed: %s", avID, err)
-		return
-	}
-	if err = av.CheckSpec(attrView); nil != err {
+	attrView, err = parseHistoricalAttributeViewData(avID, data)
+	if nil != err {
 		return
 	}
 	var snapshotColors []*av.AttributeViewCustomColor
@@ -1508,12 +1507,8 @@ func RenderHistoryAttributeView(avID, viewID, carrierViewID, query string, page,
 		return
 	}
 
-	attrView = av.NewAttributeView(avID)
-	if err = gulu.JSON.UnmarshalJSON(data, attrView); err != nil {
-		logging.LogErrorf("unmarshal attribute view [%s] failed: %s", avID, err)
-		return
-	}
-	if err = av.CheckSpec(attrView); nil != err {
+	attrView, err = parseHistoricalAttributeViewData(avID, data)
+	if nil != err {
 		return
 	}
 	attrView.CustomColorRenderContext = newHistoryAttributeViewCustomColorRenderContext(source.historyDir)
@@ -1521,6 +1516,24 @@ func RenderHistoryAttributeView(avID, viewID, carrierViewID, query string, page,
 
 	viewable, err = renderAttributeView(attrView, "", viewID, carrierViewID, query, page, pageSize, groupPaging, false, false, nil, "", calendarRanges...)
 	return
+}
+
+// 历史和仓库快照完成认证后共用字段校验，不重写历史源数据。
+func parseHistoricalAttributeViewData(avID string, data []byte) (*av.AttributeView, error) {
+	view := av.NewAttributeView(avID)
+	if err := gulu.JSON.UnmarshalJSON(data, view); nil != err {
+		return nil, err
+	}
+	if err := av.CheckSpec(view); nil != err {
+		return nil, err
+	}
+	if err := view.ValidateLayouts(); nil != err {
+		return nil, err
+	}
+	if err := view.NormalizeLocations(); nil != err {
+		return nil, err
+	}
+	return view, nil
 }
 
 func decryptHistoricalAttributeView(boxID, avID string, data []byte) ([]byte, error) {

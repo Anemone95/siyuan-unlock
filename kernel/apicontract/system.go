@@ -25,12 +25,18 @@ type SystemChangelogData struct {
 	HTML    string `json:"html"`
 	Version string `json:"version"`
 }
+type SystemFirstLaunchNoticeData struct {
+	Acknowledged bool `json:"acknowledged"`
+}
 type SystemCheckUpdateRequest struct {
 	ShowMsg bool `json:"showMsg"`
 }
 type SystemZipData struct {
 	Zip string `json:"zip"`
 }
+
+// SystemExportConfData 返回设置导出文件名和压缩包路径。导出副本清空 ChatGPT 本机账户引用、AI 密钥和 OIDC 客户端密钥，
+// 不修改当前工作空间配置；导出的设置文件不包含笔记本加密密钥及恢复材料。
 type SystemExportConfData struct {
 	Name string `json:"name"`
 	Zip  string `json:"zip"`
@@ -45,6 +51,22 @@ type SystemConfData struct {
 	Conf      *SystemAppConf `json:"conf"`
 	Start     bool           `json:"start"`
 	IsPublish bool           `json:"isPublish"`
+	// SettingTasks 为当前仍执行的设置维护任务，前端初始化和重连时恢复任务阻塞。
+	SettingTasks *SettingTaskState `json:"settingTasks,omitempty"`
+	// Revision 是读取开始前的配置提交序号，客户端据此丢弃已包含在本次读取中的通知。
+	Revision uint64 `json:"revision"`
+}
+
+type SettingTask struct {
+	ID       string `json:"id"`
+	Active   bool   `json:"active"`
+	Message  string `json:"message"`
+	Revision uint64 `json:"revision"`
+}
+
+type SettingTaskState struct {
+	Revision uint64        `json:"revision"`
+	Tasks    []SettingTask `json:"tasks"`
 }
 type SystemImportConfRequest struct {
 	File []*multipart.FileHeader `json:"file" api:"optional"`
@@ -98,13 +120,16 @@ type SystemAppearanceModeRequest struct {
 type SystemAppearanceData struct {
 	Appearance *SettingAppearance `json:"appearance"`
 }
-type SystemUIProcessRequest struct {
-	PID string `json:"pid" api:"optional,nullable"`
-}
 type SystemExitRequest struct {
-	Force               bool    `json:"force" api:"optional,nullable"`
-	ExecInstallPkg      float64 `json:"execInstallPkg" api:"optional,nullable"`
-	SetCurrentWorkspace *bool   `json:"setCurrentWorkspace" api:"optional,nullable"`
+	Force               bool               `json:"force" api:"optional,nullable"`
+	ExecInstallPkg      float64            `json:"execInstallPkg" api:"optional,nullable"`
+	SetCurrentWorkspace *bool              `json:"setCurrentWorkspace" api:"optional,nullable"`
+	RecoverExit         *SystemRecoverExit `json:"recoverExit" api:"optional,nullable"`
+}
+type SystemRecoverExit struct {
+	PID       int   `json:"pid"`
+	StartedAt int64 `json:"startedAt"`
+	Force     bool  `json:"force" api:"optional,nullable"`
 }
 type SystemExitData struct {
 	CloseTimeout   int    `json:"closeTimeout"`
@@ -130,11 +155,6 @@ type SystemOIDCStartData struct {
 	AuthURL   string `json:"authURL"`
 	ExpiresIn int    `json:"expiresIn"`
 	PollToken string `json:"pollToken,omitempty"`
-}
-type SystemOIDCCallbackRequest struct {
-	State string `json:"state" api:"optional,nullable"`
-	Code  string `json:"code" api:"optional,nullable"`
-	Error string `json:"error" api:"optional,nullable"`
 }
 type SystemOIDCMobileRequest struct {
 	CallbackURL string `json:"callbackURL" api:"optional,nullable"`

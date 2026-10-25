@@ -18,6 +18,7 @@ package model
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sync"
@@ -28,10 +29,11 @@ import (
 	"github.com/88250/lute/ast"
 	"github.com/88250/lute/parse"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
+	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
 // UndoEntry 是撤销栈中的一条记录。跨文档操作（MutatedRootIDs 含多个 rootID）的 entry
-// 会以同一指针同时挂在这些 rootID 的栈上，撤销任一端时联动其它端移除引用。
+// 会以同一指针同时挂在这些 rootID 的栈上，撤销任一端时联动其他端移除引用。
 type UndoEntry struct {
 	id             string
 	doOperations   []*Operation
@@ -77,7 +79,7 @@ type UndoLog struct {
 // GlobalUndoLog 全局撤销日志单例。内存态，重启清空。
 var GlobalUndoLog = newUndoLog(64)
 
-var undoEntrySeq uint64
+var undoEntrySeq atomic.Uint64
 
 func newUndoLog(max int) *UndoLog {
 	return &UndoLog{
@@ -87,7 +89,7 @@ func newUndoLog(max int) *UndoLog {
 }
 
 func newUndoEntryID() string {
-	seq := atomic.AddUint64(&undoEntrySeq, 1)
+	seq := undoEntrySeq.Add(1)
 	return fmt.Sprintf("undo-%d-%d", time.Now().UnixNano(), seq)
 }
 
@@ -178,7 +180,7 @@ func (l *UndoLog) Undo(rootID string) *UndoEntry {
 	return entry
 }
 
-// UndoCommit 在逆操作成功执行后，联动从其它关联栈移除该 entry（按 id 匹配）。
+// UndoCommit 在逆操作成功执行后，联动从其他关联栈移除该 entry（按 id 匹配）。
 func (l *UndoLog) UndoCommit(entry *UndoEntry, rootID string) {
 	if nil == entry {
 		return
@@ -233,7 +235,7 @@ func (l *UndoLog) Redo(rootID string) *UndoEntry {
 	return entry
 }
 
-// RedoCommit 在重做成功执行后，联动把 entry 重新挂到其它关联栈顶。
+// RedoCommit 在重做成功执行后，联动把 entry 重新挂到其他关联栈顶。
 func (l *UndoLog) RedoCommit(entry *UndoEntry, rootID string) {
 	if nil == entry {
 		return
@@ -296,21 +298,30 @@ func (l *UndoLog) State(rootID string) (canUndo, canRedo bool, peekMutatedRootID
 	return
 }
 
-// Clear 清理撤销日志。rootID 非空时清该文档栈并联动移除其它栈中相关条目；为空时清空全部。
+// Clear 清理撤销日志。rootID 非空时清该文档栈并联动移除其他栈中相关条目；为空时清空全部。
 func (l *UndoLog) Clear(rootID string) {
+	l.clear(rootID)
+}
+
+// 返回状态发生变化的文档，包括联动移除跨文档记录的其他文档。
+func (l *UndoLog) clear(rootID string) (rootIDs []string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if "" == rootID {
+		for id := range l.stacks {
+			rootIDs = append(rootIDs, id)
+		}
 		l.stacks = map[string]*undoStack{}
 		return
 	}
+	rootIDs = append(rootIDs, rootID)
 
 	s := l.stacks[rootID]
 	if nil == s {
 		return
 	}
-	// 收集该栈中所有跨文档条目的 id，联动从其它栈移除
+	// 收集该栈中所有跨文档条目的 id，联动从其他栈移除
 	linkedIDs := map[string]bool{}
 	for _, e := range s.undoStack {
 		for _, r := range e.mutatedRootIDs {
@@ -328,12 +339,30 @@ func (l *UndoLog) Clear(rootID string) {
 	}
 	delete(l.stacks, rootID)
 	for otherID, other := range l.stacks {
+		beforeUndo, beforeRedo := len(other.undoStack), len(other.redoStack)
 		for id := range linkedIDs {
 			other.undoStack = removeEntryByID(other.undoStack, id)
 			other.redoStack = removeEntryByID(other.redoStack, id)
 		}
-		_ = otherID
+		if beforeUndo != len(other.undoStack) || beforeRedo != len(other.redoStack) {
+			rootIDs = append(rootIDs, otherID)
+		}
 	}
+	return
+}
+
+// 非编辑器写盘成功后失效旧记录，并通知所有客户端更新撤销和重做状态。
+func invalidateDocumentHistory(rootID string) {
+	rootIDs := GlobalUndoLog.clear(rootID)
+	states := map[string]map[string]bool{}
+	for _, id := range rootIDs {
+		canUndo, canRedo, _ := GlobalUndoLog.State(id)
+		states[id] = map[string]bool{"canUndo": canUndo, "canRedo": canRedo}
+	}
+	event := util.NewCmdResult("transactions", 0, util.PushModeBroadcast)
+	event.Data = []*Transaction{}
+	event.Context = map[string]any{"rootIDs": rootIDs, "undoState": states}
+	util.PushEvent(event)
 }
 
 // ClearAttributeView 从各文档栈清理涉及指定数据库的整笔撤销、重做记录，保留无关记录。
@@ -350,6 +379,13 @@ func (l *UndoLog) ClearAttributeView(avID string) {
 			for _, operation := range operations {
 				if operation.AvID == avID {
 					return true
+				}
+				if conversion := operation.listConversion; conversion != nil {
+					for _, binding := range conversion.bindings {
+						if binding.avID == avID {
+							return true
+						}
+					}
 				}
 				if snapshot := operation.attributeViewFields; snapshot != nil && snapshot.changes[avID] != nil {
 					return true
@@ -398,9 +434,7 @@ func cloneOperations(ops []*Operation) []*Operation {
 		cloned.BlockIDs = cloneOperationBlockIDs(op.BlockIDs)
 		if nil != op.Context {
 			cloned.Context = make(map[string]any, len(op.Context))
-			for key, value := range op.Context {
-				cloned.Context[key] = value
-			}
+			maps.Copy(cloned.Context, op.Context)
 		}
 		ret[i] = &cloned
 	}

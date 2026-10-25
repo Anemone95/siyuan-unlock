@@ -49,16 +49,20 @@ type AISessionIDRequest struct {
 
 type AISkillNameRequest struct {
 	Name string `json:"name" api:"optional,nullable"`
+	// Source 省略时保持工作空间和用户技能解析；显式内置来源拒绝由普通 HTTP 读取或修改。
+	Source string `json:"source" api:"optional,nullable"`
 }
 
 type AISkillSaveRequest struct {
 	Name    string `json:"name" api:"optional,nullable"`
 	Content string `json:"content" api:"optional,nullable"`
+	Source  string `json:"source" api:"optional,nullable"`
 }
 
 type AISkillRenameRequest struct {
 	OldName string `json:"oldName" api:"optional,nullable"`
 	NewName string `json:"newName" api:"optional,nullable"`
+	Source  string `json:"source" api:"optional,nullable"`
 }
 
 type AIBrowserCapabilityResultRequest struct {
@@ -105,6 +109,17 @@ type AISkillInfo struct {
 	Description string `json:"description"`
 }
 
+// AIBuiltinSkillInfo 仅提供官方技能的发现信息；正文加载另由可信任务选择授权，不能通过 getSkill 读取。
+type AIBuiltinSkillInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Version     string `json:"version"`
+	Digest      string `json:"digest"`
+	Enabled     bool   `json:"enabled"`
+}
+
 type AIUserSkillInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -145,14 +160,14 @@ type AICapabilityManifest struct {
 	OwnerName   string               `json:"ownerName,omitempty"`
 	Runtime     string               `json:"runtime"`
 	AgentOnly   bool                 `json:"agentOnly,omitempty"`
-	Effects     AIToolEffects        `json:"effects,omitempty"`
+	Effects     AIToolEffects        `json:"effects"`
 	Available   bool                 `json:"available"`
 	Actions     []AICapabilityAction `json:"actions,omitempty"`
 }
 
 type AICapabilityAction struct {
 	Name    string        `json:"name"`
-	Effects AIToolEffects `json:"effects,omitempty"`
+	Effects AIToolEffects `json:"effects"`
 }
 
 type AIMessageRequest struct {
@@ -170,11 +185,17 @@ type AIEditorActionSaveRequest struct {
 type AIEditorActionIDRequest struct {
 	ID string `json:"id" api:"trim"`
 }
+
+// AIProviderRequest 按配置协议列出模型；Gemini Interactions 使用原生模型清单并去除 models/ 前缀。
 type AIProviderRequest struct {
 	Provider       string           `json:"provider" api:"optional,nullable,ignoretype"`
 	ProviderConfig *SettingProvider `json:"providerConfig" api:"optional,nullable,legacyobject"`
 	providerError  error
 }
+
+// AIModelRequest 在列出模型后执行所选协议的最小生成请求，清单包含模型本身不代表测试成功。
+// Gemini Interactions 测试使用 store=false、流式响应及有限输出预算，必须收到已校验的终止事件。
+// 测试允许无上游错误且不含工具调用的 incomplete 响应，避免思考耗尽测试预算导致误判；正常生成仍报错。
 type AIModelRequest struct {
 	Model string `json:"model" api:"trim"`
 	AIProviderRequest
@@ -199,9 +220,10 @@ type AIDecisionTestData struct {
 	Msg     *string `json:"msg,omitempty"`
 }
 type AIModelsData struct {
-	Models         []string       `json:"models"`
-	ContextLengths map[string]int `json:"contextLengths"`
-	Msg            *string        `json:"msg,omitempty"`
+	DisplayNames   map[string]string `json:"displayNames,omitempty"`
+	Models         []string          `json:"models"`
+	ContextLengths map[string]int    `json:"contextLengths"`
+	Msg            *string           `json:"msg,omitempty"`
 }
 type AIMCPEnvironmentData struct {
 	Names    []string `json:"names"`
@@ -216,4 +238,17 @@ type AIPermissionData struct {
 type AISkillData struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
+}
+
+// AIDecisionTestRequest 使用固定三类问题测试完整草稿，不保存、不读笔记，也不借用已保存的凭证。
+// 空请求或未提供草稿字段的对象测试已保存配置；提供任一草稿字段即要求完整配置。
+// 损坏的 JSON 和尾随内容返回错误，不回退到已保存配置，测试可能产生供应商费用。
+type AIDecisionTestRequest struct {
+	Provider string                  `json:"provider" api:"optional"`
+	Profile  *SettingDecisionProfile `json:"profile" api:"optional"`
+	draft    bool
+}
+
+func (request AIDecisionTestRequest) HasDraft() bool {
+	return request.draft || request.Provider != "" || request.Profile != nil
 }

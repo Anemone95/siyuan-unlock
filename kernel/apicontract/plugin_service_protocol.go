@@ -32,6 +32,7 @@ const (
 	PluginServiceFile         PluginServiceMode = "file"
 	PluginServiceString       PluginServiceMode = "string"
 	PluginServiceRaw          PluginServiceMode = "raw"
+	PluginServiceStream       PluginServiceMode = "stream"
 	PluginServiceRedirect     PluginServiceMode = "redirect"
 	PluginServiceProxy        PluginServiceMode = "proxy"
 	PluginServiceEmpty        PluginServiceMode = "empty"
@@ -74,6 +75,7 @@ func PluginServiceOptions() ResponseOptions {
 		{PluginServiceFile, "file", []string{"dynamic"}, "bytes", true},
 		{PluginServiceString, "plugin", []string{"text/plain"}, "text", true},
 		{PluginServiceRaw, "plugin", []string{"dynamic"}, "bytes", true},
+		{PluginServiceStream, "plugin", []string{"dynamic"}, "bytes", true},
 		{PluginServiceRedirect, "redirect", []string{"text/html"}, "redirect", true},
 		{PluginServiceProxy, "proxy", []string{"upstream"}, "bytes", true},
 		{PluginServiceEmpty, "plugin", []string{"optional"}, "none", true},
@@ -165,7 +167,7 @@ func validatePluginServiceStatus(mode PluginServiceMode, status int) error {
 	return nil
 }
 
-func (b *Bundle) validatePluginServiceHTTPResponse(endpoint EndpointSchema, status int, contentType string, payload []byte) error {
+func (b *Bundle) validatePluginServiceHTTPResponse(endpoint EndpointSchema, status int, _ string, payload []byte) error {
 	if status < 100 || status > 999 {
 		return fmt.Errorf("invalid plugin service HTTP status")
 	}

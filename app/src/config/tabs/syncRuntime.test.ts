@@ -41,7 +41,7 @@ const setup = () => {
                     confirmations.push({confirm, cancel});
                 }};
             }
-            if (name === "../../dialog/processSystem") {
+            if (name === "../../dialog/progress") {
                 return {progressLoading: (data: {code: number}) => progress.push(data.code)};
             }
             if (name === "../../dialog/message") {
@@ -52,6 +52,9 @@ const setup = () => {
             }
             if (name === "./accountUi") {
                 return {updateAccountPanelVisibility: () => {}};
+            }
+            if (name === "../../sync/syncGuide") {
+                return {refreshSyncCloudDirBlock: () => {}};
             }
             return {};
         },

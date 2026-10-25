@@ -42,9 +42,8 @@ type LayoutTable struct {
 
 	Columns []*ViewTableColumn `json:"columns"` // 表格列
 
-	// TODO RowIDs 字段已经废弃，计划于 2026 年 6 月 30 日后删除 https://github.com/siyuan-note/siyuan/issues/15194
-	//Deprecated
-	RowIDs []string `json:"rowIds"` // 行 ID，用于自定义排序
+	// Deprecated: 仅用于读取和升级旧版布局，行顺序由 View.ItemIDs 维护。
+	RowIDs []string `json:"rowIds,omitempty"` // 行 ID，用于自定义排序
 }
 
 func NewLayoutTable() *LayoutTable {
@@ -176,9 +175,9 @@ func (table *Table) GetFields() (ret []Field) {
 }
 
 func (table *Table) GetField(id string) (ret Field, fieldIndex int) {
-	for _, column := range table.Columns {
+	for i, column := range table.Columns {
 		if column.ID == id {
-			return column, fieldIndex
+			return column, i
 		}
 	}
 	return nil, -1

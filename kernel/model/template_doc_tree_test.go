@@ -425,8 +425,8 @@ func TestValidateTemplateCallGraphRejectsCyclesAndExcessiveDepth(t *testing.T) {
 
 func TestRenderTemplateDocTreeNodesLimitsAggregateOutput(t *testing.T) {
 	setupFileOperationTest(t)
-	Conf.Editor = conf.NewEditor()
-	Conf.Export = conf.NewExport()
+	Conf.Editor.Store(conf.NewEditor())
+	Conf.Export.Store(conf.NewExport())
 	rootTemplate, err := template.New("").Delims(".action{", "}").Parse(
 		`.action{define "one-byte"}x.action{end}`,
 	)
@@ -522,7 +522,7 @@ func TestAttachTemplateDocTreePlansValidatesTransactionBoundary(t *testing.T) {
 		t.Fatalf("render document tree plan failed: %v", err)
 	}
 	transaction, _ := newTemplateDocTreeInsertTransaction(summary.ID, fixture.sourceID)
-	if attached, attachErr := AttachTemplateDocTreePlans([]*Transaction{transaction, &Transaction{}}); nil == attachErr || attached {
+	if attached, attachErr := AttachTemplateDocTreePlans([]*Transaction{transaction, {}}); nil == attachErr || attached {
 		t.Fatalf("plan spanning multiple transactions was accepted: attached=%t, err=%v", attached, attachErr)
 	}
 	if _, ok := templateDocTreePlans.Load(summary.ID); !ok {
@@ -697,7 +697,7 @@ func nestedTemplateDocTreeDefinition(depth int) []any {
 func templateCallChainForTest(t *testing.T, depth int) *template.Template {
 	t.Helper()
 	var source strings.Builder
-	for index := 0; index < depth; index++ {
+	for index := range depth {
 		fmt.Fprintf(&source, `.action{define "call-%d"}`, index)
 		if index+1 < depth {
 			fmt.Fprintf(&source, `.action{template "call-%d" .}`, index+1)
@@ -734,11 +734,11 @@ func newTemplateDocTreeInsertTransaction(planID, parentID string) (*Transaction,
 
 func writeTemplateDocTreeTestFile(t *testing.T, content string) string {
 	t.Helper()
-	if nil == Conf.Editor {
-		Conf.Editor = conf.NewEditor()
+	if nil == Conf.Editor.Load() {
+		Conf.Editor.Store(conf.NewEditor())
 	}
-	if nil == Conf.Export {
-		Conf.Export = conf.NewExport()
+	if nil == Conf.Export.Load() {
+		Conf.Export.Store(conf.NewExport())
 	}
 	templateDir := filepath.Join(util.DataDir, "templates")
 	if err := os.MkdirAll(templateDir, 0755); nil != err {

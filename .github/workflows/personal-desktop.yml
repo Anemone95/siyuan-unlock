@@ -5,9 +5,6 @@ on:
       version:
         required: true
         type: string
-      unlock_ref:
-        required: true
-        type: string
 jobs:
   build:
     runs-on: ${{ matrix.config.os }}
@@ -86,7 +83,6 @@ jobs:
       - uses: ./siyuan-note/.github/actions/prepare-personal-build
         with:
           version: ${{ inputs.version }}
-          unlock_ref: ${{ inputs.unlock_ref }}
       - name: Set up Cross Compilation Toolchains for Linux
         if: contains( matrix.config.goos, 'linux')
         run: |
@@ -144,7 +140,7 @@ jobs:
       - name: Verify account-free sync
         shell: bash
         working-directory: ${{ github.workspace }}/siyuan-note
-        run: bash ../unlock-patches/scripts/check-account-free.sh siyuan
+        run: bash scripts/check-account-free.sh siyuan
 
       - name: Check listener and session recovery
         shell: bash

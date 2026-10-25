@@ -21,13 +21,14 @@ import (
 )
 
 type FileTree struct {
+	RecentDocsSort           string `json:"recentDocsSort"`           // 最近文档排序方式
 	AlwaysSelectOpenedFile   bool   `json:"alwaysSelectOpenedFile"`   // 是否自动选中当前打开的文件
 	OpenFilesUseCurrentTab   bool   `json:"openFilesUseCurrentTab"`   // 在当前页签打开文件
 	CloseTabOnDoubleClick    bool   `json:"closeTabOnDoubleClick"`    // 是否使用双击关闭页签
-	DocIconClickExpand       bool   `json:"docIconClickExpand"`       // 单击文档或笔记本图标时展开或折叠下级文档
-	ParentDocClickExpand     bool   `json:"parentDocClickExpand"`     // 单击父文档标题时展开或折叠下级文档
-	BoxDocEnabled            *bool  `json:"boxDocEnabled"`            // 是否启用顶层笔记本文档
-	UseSVGDefaultIcon        *bool  `json:"useSVGDefaultIcon"`        // 是否使用 SVG 默认图标
+	DocIconClickMode         int    `json:"docIconClickMode"`         // 单击文档图标或笔记本图标的行为：0 修改图标，1 展开或折叠子文档
+	ParentDocTitleClickMode  int    `json:"parentDocTitleClickMode"`  // 点击父文档标题的行为：0 打开文档，1 展开或折叠子文档，2 单击展开或折叠子文档、双击打开父文档
+	BoxDocEnabled            bool   `json:"boxDocEnabled"`            // 是否启用顶层笔记本文档
+	UseSVGDefaultIcon        bool   `json:"useSVGDefaultIcon"`        // 是否使用 SVG 默认图标
 	RefCreateSaveBox         string `json:"refCreateSaveBox"`         // 块引时新建文档存储笔记本
 	RefCreateSavePath        string `json:"refCreateSavePath"`        // 块引时新建文档存储路径
 	DocCreateSaveBox         string `json:"docCreateSaveBox"`         // 新建文档存储笔记本
@@ -51,21 +52,22 @@ type FileTree struct {
 
 func NewFileTree() *FileTree {
 	return &FileTree{
+		RecentDocsSort:           "viewedAt",
 		AlwaysSelectOpenedFile:   false,
 		OpenFilesUseCurrentTab:   false,
 		CloseTabOnDoubleClick:    false,
-		DocIconClickExpand:       false,
-		ParentDocClickExpand:     false,
-		BoxDocEnabled:            new(bool),
-		UseSVGDefaultIcon:        new(true),
+		DocIconClickMode:         0,
+		ParentDocTitleClickMode:  0,
+		BoxDocEnabled:            false,
+		UseSVGDefaultIcon:        true,
 		Sort:                     util.SortModeCustom,
 		MaxListCount:             512,
 		MaxOpenTabCount:          8,
 		AllowCreateDeeper:        false,
 		CloseTabsOnStart:         false,
 		TabStartupMode:           new(int),
-		UseSingleLineSave:        util.UseSingleLineSave,
-		LargeFileWarningSize:     util.LargeFileWarningSize,
+		UseSingleLineSave:        util.DefaultUseSingleLineSave,
+		LargeFileWarningSize:     util.DefaultLargeFileWarningSize,
 		CreateDocAtTop:           new(bool),
 		NoSplitScreenWhenOpenTab: false,
 	}

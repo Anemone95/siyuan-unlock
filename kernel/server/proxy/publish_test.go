@@ -52,6 +52,7 @@ func TestPublishReverseProxyPreservesRequestHost(t *testing.T) {
 	request.Header.Set("X-Forwarded-For", "192.0.2.1")
 	request.Header.Set("X-Forwarded-Host", "spoofed.example")
 	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Header.Set(util.ClientTLSHeader, util.ClientTLSHeaderValue)
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -75,6 +76,9 @@ func TestPublishReverseProxyPreservesRequestHost(t *testing.T) {
 	}
 	if actual := headers.Get("Forwarded"); actual != "" {
 		t.Fatalf("Forwarded = %q, want empty", actual)
+	}
+	if actual := headers.Get(util.ClientTLSHeader); actual != util.ClientTLSHeaderPlaintextValue {
+		t.Fatalf("%s = %q, want %q", util.ClientTLSHeader, actual, util.ClientTLSHeaderPlaintextValue)
 	}
 	if actual := <-hostInfo; actual != request.Host {
 		t.Fatalf("Host = %q, want %q", actual, request.Host)
@@ -156,14 +160,14 @@ func TestPublishSessionCookieAttributes(t *testing.T) {
 	defer func() { model.Conf = previousConf }()
 
 	model.Conf = model.NewAppConf()
-	model.Conf.Publish = &conf.Publish{
+	model.Conf.Publish.Store(&conf.Publish{
 		Enable: true,
 		Port:   6808,
 		Auth: &conf.BasicAuth{
 			Enable:   true,
 			Accounts: []*conf.BasicAuthAccount{{Username: username, Password: password}},
 		},
-	}
+	})
 	// 构建账户及其 token，Basic Auth 成功后由会话认证路径转发
 	model.InitPublishAccounts()
 
@@ -196,6 +200,12 @@ func TestPublishSessionCookieAttributes(t *testing.T) {
 				t.Fatal(err)
 			}
 			request.SetBasicAuth(username, password)
+			// 客户端伪造相反的协议标记不得改变会话 Cookie 的传输限制。
+			if test.plaintext {
+				request.Header.Set(util.ClientTLSHeader, util.ClientTLSHeaderValue)
+			} else {
+				request.Header.Set(util.ClientTLSHeader, util.ClientTLSHeaderPlaintextValue)
+			}
 
 			response, err := publishServer.Client().Do(request)
 			if err != nil {

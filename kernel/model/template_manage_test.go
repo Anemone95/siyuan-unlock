@@ -213,8 +213,8 @@ func TestPreviewTemplateUnsavedSource(t *testing.T) {
 
 func TestExportTemplateDocumentAttributesAndDirectory(t *testing.T) {
 	fixture := setupFileOperationTest(t)
-	Conf.Editor = conf.NewEditor()
-	Conf.Export = conf.NewExport()
+	Conf.Editor.Store(conf.NewEditor())
+	Conf.Export.Store(conf.NewExport())
 	tree, err := LoadTreeByBlockID(fixture.sourceID)
 	if err != nil {
 		t.Fatal(err)
@@ -271,8 +271,8 @@ func TestExportTemplateDocumentAttributesAndDirectory(t *testing.T) {
 
 func TestDocSaveAsTemplateInfoAndRememberedAttrs(t *testing.T) {
 	fixture := setupFileOperationTest(t)
-	Conf.Editor = conf.NewEditor()
-	Conf.Export = conf.NewExport()
+	Conf.Editor.Store(conf.NewEditor())
+	Conf.Export.Store(conf.NewExport())
 
 	info, err := GetDocSaveAsTemplateInfo(fixture.sourceID)
 	if nil != err {
@@ -409,7 +409,7 @@ func TestTemplatePackageIdentity(t *testing.T) {
 	previous, previousConf := util.DataDir, Conf
 	util.DataDir = t.TempDir()
 	Conf = NewAppConf()
-	Conf.Search = conf.NewSearch()
+	Conf.Search.Store(conf.NewSearch())
 	t.Cleanup(func() { util.DataDir, Conf = previous, previousConf })
 	root, err := openTemplateRoot()
 	if err != nil {
@@ -462,7 +462,11 @@ func TestExportTemplateDocumentAttributeScope(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := setupFileOperationTest(t)
-			Conf.Editor, Conf.Export = conf.NewEditor(), conf.NewExport()
+			{
+				confSectionValue0, confSectionValue1 := conf.NewEditor(), conf.NewExport()
+				Conf.Editor.Store(confSectionValue0)
+				Conf.Export.Store(confSectionValue1)
+			}
 			tree, err := LoadTreeByBlockID(fixture.sourceID)
 			if err != nil {
 				t.Fatal(err)
@@ -470,7 +474,9 @@ func TestExportTemplateDocumentAttributeScope(t *testing.T) {
 			tree.Root.SetIALAttr("icon", "default")
 			var markdown strings.Builder
 			for _, chunk := range test.chunks {
-				markdown.WriteString("```template\n" + chunk + "\n```\n\n")
+				markdown.WriteString("```template\n")
+				markdown.WriteString(chunk)
+				markdown.WriteString("\n```\n\n")
 			}
 			engine := NewLute()
 			codeTree := parse.Parse("", []byte(markdown.String()), engine.ParseOptions)
@@ -502,7 +508,11 @@ func TestExportTemplateDocumentAttributeScope(t *testing.T) {
 
 func TestTemplateDocumentAttributeFormats(t *testing.T) {
 	setupFileOperationTest(t)
-	Conf.Editor, Conf.Export = conf.NewEditor(), conf.NewExport()
+	{
+		confSectionValue0, confSectionValue1 := conf.NewEditor(), conf.NewExport()
+		Conf.Editor.Store(confSectionValue0)
+		Conf.Export.Store(confSectionValue1)
+	}
 	legacy, err := parseTemplateKTree([]byte(`Body
 
 {: id="20260718000001-abcdefg" icon="legacy" type="doc"}`))

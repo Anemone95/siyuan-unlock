@@ -1,3 +1,5 @@
+@use "../component/counter";
+
 /*
 .status: 2
 
@@ -17,6 +19,10 @@ window.siyuan.zIndex: 10
 
 .b3-tooltips: 1000000
 */
+
+.app-loading {
+  z-index: 10;
+}
 
 html {
   position: fixed;
@@ -63,11 +69,22 @@ body {
 }
 
 html[data-frontend="browser-desktop"] {
-  .fullscreen > .protyle-breadcrumb,
-  .fullscreen > .block__icons {
-    padding-left: calc(env(titlebar-area-x, 0px) + 8px);
-    padding-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px) + 8px);
-    height: calc(env(titlebar-area-height, 31px) + 1px);
+  .fullscreen {
+    > .protyle-breadcrumb,
+    > .block__icons {
+      padding-left: calc(env(titlebar-area-x, 0px) + 8px);
+      padding-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px) + 8px);
+      height: calc(env(titlebar-area-height, var(--b3-ui-browser-titlebar-height, 31px)) + 1px);
+    }
+  }
+}
+
+// 移动设备的桌面布局不预留 macOS 窗口按钮空间，iPad 窗口控件按原生上报的宽度避让。
+body.body--android,
+body.body--ios,
+body.body--harmony {
+  .fullscreen {
+    --b3-toolbar-left-mac: calc(var(--ios-window-controls-left, 0px) + 8px);
   }
 }
 
@@ -85,7 +102,7 @@ html[data-frontend="browser-desktop"] {
 }
 
 :root[data-ios-window-controls] #status {
-  height: calc(32px + var(--ios-window-safe-bottom, 0px));
+  height: calc(var(--b3-ui-status-height, 32px) + var(--ios-window-safe-bottom, 0px));
   padding-bottom: var(--ios-window-safe-bottom, 0px);
 }
 
@@ -97,8 +114,8 @@ html[data-frontend="browser-desktop"] {
 
 .toolbar {
   box-sizing: border-box;
-  height: 32px;
-  line-height: 32px;
+  height: var(--b3-ui-toolbar-height, 32px);
+  line-height: var(--b3-ui-toolbar-height, 32px);
   padding: 0 5px 0 var(--b3-toolbar-left-mac);
   overflow: hidden; // 最小化后右上角显示不全
 
@@ -110,7 +127,7 @@ html[data-frontend="browser-desktop"] {
   &--browser {
     padding-left: calc(env(titlebar-area-x, 0px) + 5px);
     padding-right: calc(100% - env(titlebar-area-width, 100%) - env(titlebar-area-x, 0px) + 5px);
-    height: calc(env(titlebar-area-height, 31px) + 1px);
+    height: calc(env(titlebar-area-height, var(--b3-ui-browser-titlebar-height, 31px)) + 1px);
   }
 
   #windowControls {
@@ -138,12 +155,20 @@ html[data-frontend="browser-desktop"] {
     }
   }
 
-  &__title-icon {
+  &__title-content {
     display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    gap: 4px;
+    vertical-align: top;
+    pointer-events: none;
+  }
+
+  &__title-icon {
+    display: flex;
+    flex-shrink: 0;
     width: 16px;
     height: 16px;
-    margin-right: 4px;
-    vertical-align: middle;
     align-items: center;
     justify-content: center;
     pointer-events: none;
@@ -160,7 +185,7 @@ html[data-frontend="browser-desktop"] {
     cursor: pointer;
     color: var(--b3-toolbar-color);
     padding: 4px;
-    margin: 2px;
+    margin: var(--b3-ui-toolbar-item-margin, 2px);
     border-radius: var(--b3-border-radius);
     box-sizing: border-box;
     transition: var(--b3-transition);
@@ -194,16 +219,16 @@ html[data-frontend="browser-desktop"] {
     }
 
     &--win {
-      padding: 9px 13px;
+      padding: var(--b3-ui-toolbar-control-padding, 9px) 13px;
       margin: 0;
-      height: 31.5px;
+      height: var(--b3-ui-toolbar-control-height, 31.5px);
       border-radius: 0;
     }
 
     &--close {
-      padding: 9px 15px;
+      padding: var(--b3-ui-toolbar-control-padding, 9px) 15px;
       margin: 0;
-      height: 31.5px;
+      height: var(--b3-ui-toolbar-control-height, 31.5px);
       border-radius: 0;
 
       &:hover {
@@ -227,8 +252,8 @@ html[data-frontend="browser-desktop"] {
     }
 
     .toolbar__item {
-      padding: 13.25px;
-      height: 42px;
+      padding: var(--b3-ui-window-control-padding, 13.25px);
+      height: var(--b3-ui-panel-height, 42px);
       margin: 0;
       border-radius: 0;
 
@@ -256,8 +281,8 @@ html[data-frontend="browser-desktop"] {
 
   box-sizing: border-box;
   z-index: 2;
-  height: 32px;
-  line-height: 32px;
+  height: var(--b3-ui-status-height, 32px);
+  line-height: var(--b3-ui-status-height, 32px);
   padding: 0 7px;
 
   &__msg {
@@ -405,28 +430,26 @@ html[data-frontend="browser-desktop"] {
   }
 }
 
-.body--windows .sy__file .b3-list-item__icon {
-  font-size: 16px;
+// 触摸操作直接显示文档面板按钮，避免悬停显现动画延迟点击。
+.body--touch-input .sy__file {
+  .block__icons:not(.protyle-wysiwyg *) .block__icon:not(.backlinkList__toggle) {
+    display: flex;
+    opacity: 1;
+    transition: none;
+  }
+
+  .block__icons:not(.protyle-wysiwyg *) .block__icon[disabled]:not(.backlinkList__toggle) {
+    opacity: .38;
+  }
+
+  .block__icons:not(.protyle-wysiwyg *) .fn__space {
+    display: block;
+    transition: none;
+  }
 }
 
-.counter {
-  margin-left: 4px;
-  line-height: 22px;
-  padding: 0 8px;
-  color: var(--b3-theme-on-surface-light);
-  border-radius: var(--b3-border-radius);
-  font-size: 12px;
-  user-select: none;
-  height: 22px;
-
-  &--right {
-    width: 32px;
-    text-align: right;
-  }
-
-  &--bg {
-    background-color: var(--b3-theme-surface);
-  }
+.body--windows .sy__file .b3-list-item__icon {
+  font-size: 16px;
 }
 
 .reveal {

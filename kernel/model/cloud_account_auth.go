@@ -22,6 +22,10 @@ func cloudAccountAuthFailureHandler(token string) func() {
 	if requestedUser == nil {
 		return func() {}
 	}
+	// 本地免登录身份没有云端会话，云端认证失败不能清除其同步权限。
+	if requestedUser.UserId == "0" && requestedUser.UserToken == "token" {
+		return func() {}
+	}
 	return func() {
 		cloudAccountMu.Lock()
 		defer cloudAccountMu.Unlock()
@@ -44,7 +48,7 @@ func cloudAccountAuthFailureHandler(token string) func() {
 // 调用方在来源锁或同步锁内捕获凭据，第三方存储错误不影响思源账号。
 func cloudRepoErrorHandler() func(error) {
 	user := Conf.GetUser()
-	if Conf.Sync.Provider != conf.ProviderSiYuan || user == nil {
+	if Conf.Sync.Load().Provider != conf.ProviderSiYuan || user == nil {
 		return func(error) {}
 	}
 	invalid := cloudAccountAuthFailureHandler(user.UserToken)

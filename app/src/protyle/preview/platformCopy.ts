@@ -1,4 +1,5 @@
 import {transformSemanticInlineMarkers} from "../util/inlineElementMarker";
+import {getImageTitle} from "../render/imageTitle";
 
 const NBSP = "\u00A0";
 const ZERO_WIDTH_REGEXP = /\u200B|\u200C|\u200D|\uFEFF/g;
@@ -73,7 +74,7 @@ const preserveSpaces = (line: string) => line
 export const getWechatCodeLines = (text: string) => text.split(/\r\n|\r|\n/).map(preserveSpaces);
 
 export const buildExpandedTableGrid = <T extends ITableGridCell>(rows: T[][]) => {
-    const grid: Array<Array<T | undefined>> = rows.map(() => []);
+    const grid: Array<Array<T | undefined>> = rows.map((): Array<T | undefined> => []);
     let columnCount = 0;
     rows.forEach((cells, rowIndex) => {
         let columnIndex = 0;
@@ -443,7 +444,7 @@ const convertZhihuImages = (root: HTMLElement) => {
         }
         const clonedImage = image.cloneNode(true) as HTMLImageElement;
         const title = imageWrapper.querySelector<HTMLElement>(".protyle-action__title span")?.textContent?.trim() ||
-            image.getAttribute("title")?.trim();
+            getImageTitle(image).trim();
         if (!title) {
             applyImageLayout(imageWrapper, image, clonedImage);
             imageWrapper.replaceWith(clonedImage);

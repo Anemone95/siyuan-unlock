@@ -1,9 +1,9 @@
 const path = require("path");
+const PreserveWatchAssetsPlugin = require("./scripts/preserve-watch-assets");
 const webpack = require("webpack");
 const pkg = require("./package.json");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
-const {CleanWebpackPlugin} = require("clean-webpack-plugin");
 const {EsbuildPlugin} = require("esbuild-loader");
 
 module.exports = (env, argv) => {
@@ -13,6 +13,8 @@ module.exports = (env, argv) => {
         devtool: argv.mode !== "production" ? "source-map" : false,
         target: "electron-renderer",
         output: {
+            // 首次输出时清理，开发期间的后续输出由插件保留旧资源。
+            clean: true,
             globalObject: "globalThis",
             publicPath: "auto",
             filename: "[name].[chunkhash].js",
@@ -21,6 +23,7 @@ module.exports = (env, argv) => {
         entry: {
             "main": "./src/index.ts",
             "window": "./src/window/index.ts",
+            "settings": "./src/config/setting/window.ts",
         },
         resolve: {
             extensions: [".ts", ".js", ".tpl", ".scss", ".png", ".svg"],
@@ -72,7 +75,8 @@ module.exports = (env, argv) => {
                     test: /\.tpl/,
                     include: [
                         path.resolve(__dirname, "src/assets/template/app/index.tpl"),
-                        path.resolve(__dirname, "src/assets/template/app/window.tpl")],
+                        path.resolve(__dirname, "src/assets/template/app/window.tpl"),
+                        path.resolve(__dirname, "src/assets/template/app/settings.tpl")],
                     loader: "html-loader",
                     options: {
                         sources: false,
@@ -138,11 +142,7 @@ module.exports = (env, argv) => {
             ],
         },
         plugins: [
-            new CleanWebpackPlugin({
-                cleanStaleWebpackAssets: false,
-                cleanOnceBeforeBuildPatterns: [
-                    path.join(__dirname, "stage/build/app")],
-            }),
+            new PreserveWatchAssetsPlugin(),
             new webpack.DefinePlugin({
                 SIYUAN_VERSION: JSON.stringify(pkg.version),
                 NODE_ENV: JSON.stringify(argv.mode),
@@ -161,6 +161,12 @@ module.exports = (env, argv) => {
                 chunks: ["window"],
                 filename: "window.html",
                 template: "src/assets/template/app/window.tpl",
+            }),
+            new HtmlWebpackPlugin({
+                inject: "head",
+                chunks: ["settings"],
+                filename: "settings.html",
+                template: "src/assets/template/app/settings.tpl",
             }),
         ],
     };

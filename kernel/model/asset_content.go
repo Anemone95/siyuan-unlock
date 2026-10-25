@@ -18,7 +18,9 @@ package model
 
 import (
 	"bytes"
+	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -159,7 +161,7 @@ func fullTextSearchAssetContentByRegexp(exp, typeFilter string, typeArgs []any, 
 	stmt := "SELECT * FROM `asset_contents_fts_case_insensitive` WHERE " + fieldFilter + typeFilter
 	stmt += " " + orderBy
 	stmt += " LIMIT " + strconv.Itoa(pageSize) + " OFFSET " + strconv.Itoa((page-1)*pageSize)
-	assetContents := sql.SelectAssetContentsRawStmtNoParseArgs(stmt, args, Conf.Search.Limit)
+	assetContents := sql.SelectAssetContentsRawStmtNoParseArgs(stmt, args, Conf.Search.Load().Limit)
 	ret = fromSQLAssetContents(&assetContents)
 	if 1 > len(ret) {
 		ret = []*AssetContent{}
@@ -197,7 +199,7 @@ func fullTextSearchAssetContentByFTS(query, typeFilter string, typeArgs []any, o
 	stmt += " LIMIT " + strconv.Itoa(pageSize) + " OFFSET " + strconv.Itoa((page-1)*pageSize)
 	args := []any{buildAssetContentColumnFilter() + ":(" + query + ")"}
 	args = append(args, typeArgs...)
-	assetContents := sql.SelectAssetContentsRawStmtNoParseArgs(stmt, args, Conf.Search.Limit)
+	assetContents := sql.SelectAssetContentsRawStmtNoParseArgs(stmt, args, Conf.Search.Load().Limit)
 	ret = fromSQLAssetContents(&assetContents)
 	if 1 > len(ret) {
 		ret = []*AssetContent{}
@@ -374,7 +376,6 @@ func indexAssetContent(absPath string) {
 
 func ReindexAssetContent() {
 	task.AppendTask(task.AssetContentDatabaseIndexFull, fullReindexAssetContent)
-	return
 }
 
 func fullReindexAssetContent() {
@@ -382,7 +383,6 @@ func fullReindexAssetContent() {
 	sql.InitAssetContentDatabase(true)
 
 	assetContentSearcher.FullIndex()
-	return
 }
 
 func init() {
@@ -408,15 +408,35 @@ func (searcher *AssetsSearcher) GetParser(ext string) AssetParser {
 }
 
 func (searcher *AssetsSearcher) FullIndex() {
+	searcher.fullIndex(func(batch []*sql.AssetContent) {
+		sql.IndexAssetContentsQueue(batch)
+		// 等待本批写入完成，避免解析结果继续在索引队列中累积。
+		sql.FlushAssetContentQueue()
+	})
+}
+
+func (searcher *AssetsSearcher) fullIndex(writeBatch func([]*sql.AssetContent)) {
 	defer logging.Recover()
 
 	assetsDir := util.GetDataAssetsAbsPath()
 	if !gulu.File.IsDir(assetsDir) {
 		return
 	}
+	started := time.Now()
+	scanned, parsed := 0, 0
+	logging.LogInfof("start asset content full indexing")
 
-	var results []*AssetParseResult
-	filelock.Walk(assetsDir, func(absPath string, d fs.DirEntry, err error) error {
+	const maxBatchCount, maxBatchBytes = 128, 4 * 1024 * 1024
+	var batch []*sql.AssetContent
+	batchBytes := 0
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		writeBatch(batch)
+		batch, batchBytes = nil, 0
+	}
+	walkErr := filelock.Walk(assetsDir, func(absPath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			logging.LogErrorf("walk dir [%s] failed: %s", absPath, err)
 			return err
@@ -425,6 +445,7 @@ func (searcher *AssetsSearcher) FullIndex() {
 		if d.IsDir() {
 			return nil
 		}
+		scanned++
 
 		// 加密笔记本的 asset 是密文，跳过全量内容索引（避免密文污染搜索索引、泄漏文件名集合）
 		if IsEncryptedAssetPath(absPath) {
@@ -437,7 +458,7 @@ func (searcher *AssetsSearcher) FullIndex() {
 			return nil
 		}
 
-		logging.LogInfof("parsing asset content [%s]", absPath)
+		logging.LogDebugf("parsing asset content [%s]", absPath)
 
 		result := parser.Parse(absPath)
 		if nil == result {
@@ -453,13 +474,11 @@ func (searcher *AssetsSearcher) FullIndex() {
 		result.Path = "assets" + filepath.ToSlash(strings.TrimPrefix(absPath, assetsDir))
 		result.Size = info.Size()
 		result.Updated = info.ModTime().Unix()
-		results = append(results, result)
-		return nil
-	})
-
-	var assetContents []*sql.AssetContent
-	for _, result := range results {
-		assetContents = append(assetContents, &sql.AssetContent{
+		parsed++
+		if batchBytes+len(result.Content) > maxBatchBytes {
+			flush()
+		}
+		batch = append(batch, &sql.AssetContent{
 			ID:      ast.NewNodeID(),
 			Name:    util.RemoveID(filepath.Base(result.Path)),
 			Ext:     strings.ToLower(filepath.Ext(result.Path)),
@@ -468,9 +487,15 @@ func (searcher *AssetsSearcher) FullIndex() {
 			Updated: result.Updated,
 			Content: result.Content,
 		})
-	}
-
-	sql.IndexAssetContentsQueue(assetContents)
+		batchBytes += len(result.Content)
+		if len(batch) >= maxBatchCount || batchBytes >= maxBatchBytes {
+			flush()
+		}
+		return nil
+	})
+	flush()
+	logging.LogInfof("asset content full indexing finished: files=%d, parsed=%d, skipped=%d, elapsed=%s, error=%v",
+		scanned, parsed, scanned-parsed, time.Since(started), walkErr)
 }
 
 func NewAssetsSearcher() *AssetsSearcher {
@@ -721,7 +746,8 @@ func (parser *XlsxAssetParser) Parse(absPath string) (ret *AssetParseResult) {
 		}
 		for _, row := range rows {
 			for _, colCell := range row {
-				buf.WriteString(colCell + " ")
+				buf.WriteString(colCell)
+				buf.WriteString(" ")
 			}
 		}
 	}
@@ -810,7 +836,22 @@ func (parser *PdfAssetParser) Parse(absPath string) (ret *AssetParseResult) {
 		return
 	}
 
-	if !gulu.File.IsExist(absPath) {
+	info, err := os.Stat(absPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	if maxSizeVal := os.Getenv("SIYUAN_PDF_ASSET_CONTENT_INDEX_MAX_SIZE"); "" != maxSizeVal {
+		if maxSize, parseErr := strconv.ParseUint(maxSizeVal, 10, 64); nil == parseErr {
+			if maxSize != PDFAssetContentMaxSize {
+				PDFAssetContentMaxSize = maxSize
+				logging.LogInfof("set PDF asset content index max size to [%s]", humanize.BytesCustomCeil(maxSize, 2))
+			}
+		} else {
+			logging.LogWarnf("invalid env [SIYUAN_PDF_ASSET_CONTENT_INDEX_MAX_SIZE]: [%s], parsing failed: %s", maxSizeVal, parseErr)
+		}
+	}
+	if PDFAssetContentMaxSize < uint64(info.Size()) {
+		logging.LogWarnf("ignore large PDF asset [%s] with [%s]", absPath, humanize.BytesCustomCeil(uint64(info.Size()), 2))
 		return
 	}
 
@@ -821,9 +862,20 @@ func (parser *PdfAssetParser) Parse(absPath string) (ret *AssetParseResult) {
 	defer os.RemoveAll(tmp)
 
 	// PDF blob will be processed in-memory making sharing of PDF document data across worker goroutines possible
-	pdfData, err := os.ReadFile(tmp)
+	pdfFile, err := os.Open(tmp)
 	if err != nil {
 		logging.LogErrorf("open [%s] failed: [%s]", tmp, err)
+		return
+	}
+	// 复制期间源文件可能增长，读取上限仍需独立约束。
+	pdfData, err := io.ReadAll(io.LimitReader(pdfFile, int64(min(PDFAssetContentMaxSize, uint64(math.MaxInt64-1)))+1))
+	pdfFile.Close()
+	if err != nil {
+		logging.LogErrorf("open [%s] failed: [%s]", tmp, err)
+		return
+	}
+	if PDFAssetContentMaxSize < uint64(len(pdfData)) {
+		logging.LogWarnf("ignore large PDF asset [%s] with [%s]", absPath, humanize.BytesCustomCeil(uint64(len(pdfData)), 2))
 		return
 	}
 
@@ -871,23 +923,6 @@ func (parser *PdfAssetParser) Parse(absPath string) (ret *AssetParseResult) {
 		return
 	}
 
-	if maxSizeVal := os.Getenv("SIYUAN_PDF_ASSET_CONTENT_INDEX_MAX_SIZE"); "" != maxSizeVal {
-		if maxSize, parseErr := strconv.ParseUint(maxSizeVal, 10, 64); nil == parseErr {
-			if maxSize != PDFAssetContentMaxSize {
-				PDFAssetContentMaxSize = maxSize
-				logging.LogInfof("set PDF asset content index max size to [%s]", humanize.BytesCustomCeil(maxSize, 2))
-			}
-		} else {
-			logging.LogWarnf("invalid env [SIYUAN_PDF_ASSET_CONTENT_INDEX_MAX_SIZE]: [%s], parsing failed: %s", maxSizeVal, parseErr)
-		}
-	}
-
-	if PDFAssetContentMaxSize < uint64(len(pdfData)) {
-		// PDF files larger than 128MB are not included in asset file content searching https://github.com/siyuan-note/siyuan/issues/9500
-		logging.LogWarnf("ignore large PDF asset [%s] with [%s]", absPath, humanize.BytesCustomCeil(uint64(len(pdfData)), 2))
-		return
-	}
-
 	// next setup worker pool for processing PDF pages
 	pages := make(chan *pdfPage, pc.PageCount)
 	results := make(chan *pdfTextResult, pc.PageCount)
@@ -931,7 +966,8 @@ func (parser *PdfAssetParser) Parse(absPath string) (ret *AssetParseResult) {
 	// loop through ordered PDF text pages and join content for asset parse DB result
 	contentBuilder := bytes.Buffer{}
 	for _, pt := range pageText {
-		contentBuilder.WriteString(" " + normalizeNonTxtAssetContent(pt))
+		contentBuilder.WriteString(" ")
+		contentBuilder.WriteString(normalizeNonTxtAssetContent(pt))
 	}
 	ret = &AssetParseResult{
 		Content: contentBuilder.String(),

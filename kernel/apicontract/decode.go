@@ -37,6 +37,7 @@ func (e Endpoint[Request, Data]) Decode(reader io.Reader) (request Request, err 
 		if errors.Is(err, io.EOF) {
 			err = errors.New("the request body is empty or truncated (EOF)")
 		}
+		err = legacyJSONObjectError(err)
 		return request, fmt.Errorf("Parses request [%s] failed: %s", e.definition.Path, err)
 	}
 	value := reflect.ValueOf(&request).Elem()
@@ -47,10 +48,22 @@ func (e Endpoint[Request, Data]) Decode(reader io.Reader) (request Request, err 
 	return request, err
 }
 
+// 原始字段映射的类型错误沿用历史解析目标，避免内部原始值类型进入接口文案。
+func legacyJSONObjectError(err error) error {
+	var typeError *json.UnmarshalTypeError
+	if errors.As(err, &typeError) && typeError.Type.Kind() == reflect.Map &&
+		typeError.Type.Key().Kind() == reflect.String && typeError.Type.Elem() == reflect.TypeFor[json.RawMessage]() {
+		legacyError := *typeError
+		legacyError.Type = reflect.TypeFor[map[string]any]()
+		return &legacyError
+	}
+	return err
+}
+
 func decodeRequestFields(value reflect.Value, fields map[string]json.RawMessage) error {
 	for i := 0; i < value.NumField(); i++ {
 		field := value.Type().Field(i)
-		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		if (!field.IsExported() && !field.Anonymous) || name == "-" {
 			continue
 		}
@@ -120,13 +133,13 @@ func decodeRequestFields(value reflect.Value, fields map[string]json.RawMessage)
 			}
 			value.Field(i).SetString(trimmed)
 		}
-		for _, option := range strings.Split(field.Tag.Get("api"), ",") {
+		for option := range strings.SplitSeq(field.Tag.Get("api"), ",") {
 			if strings.HasPrefix(option, "enum=") {
 				if field.Type.Kind() != reflect.String {
 					return fmt.Errorf("unsupported enum field: %s", name)
 				}
 				found := false
-				for _, choice := range strings.Split(strings.TrimPrefix(option, "enum="), "|") {
+				for choice := range strings.SplitSeq(strings.TrimPrefix(option, "enum="), "|") {
 					if value.Field(i).String() == choice {
 						found = true
 						break

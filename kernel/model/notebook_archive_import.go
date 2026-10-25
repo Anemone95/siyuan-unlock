@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ import (
 )
 
 func checkNotebookArchiveImportTarget() error {
+	confSyncSnapshot := Conf.LoadSync()
+
 	if NotebookCryptoLifecycleState(false) != NotebookCryptoStateDisabled {
 		return ErrNotebookArchiveConfigured
 	}
@@ -36,7 +39,7 @@ func checkNotebookArchiveImportTarget() error {
 	if err != nil {
 		return err
 	}
-	if len(ids) != 0 || history || Conf.Sync != nil && Conf.Sync.Enabled {
+	if len(ids) != 0 || history || confSyncSnapshot != nil && confSyncSnapshot.Enabled {
 		return ErrNotebookArchiveConfigured
 	}
 	candidates, err := listNotebookArchiveCandidates()
@@ -381,8 +384,8 @@ func stageNotebookArchiveImport(payload, install string, manifest *notebookArchi
 }
 
 func rollbackNotebookArchiveImport(directory string, operation *notebookArchiveOperation) error {
-	for i := len(operation.Roots) - 1; i >= 0; i-- {
-		root := operation.Roots[i]
+	for _, root := range slices.Backward(operation.Roots) {
+
 		destination, err := archiveSourcePath(root)
 		if err != nil {
 			return err

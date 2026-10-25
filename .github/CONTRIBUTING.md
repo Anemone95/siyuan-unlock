@@ -21,10 +21,10 @@ Do not mix this method with pnpm's standalone installation scripts (`@pnpm/exe`)
 
 Set the Electron mirror environment variable and install Electron:
 
-* macOS/Linux: `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ pnpm install electron@44.4.5 -D`
+* macOS/Linux: `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ pnpm install electron@44.9.0 -D`
 * Windows:
   * `SET ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`
-  * `pnpm install electron@44.4.5 -D`
+  * `pnpm install electron@44.9.0 -D`
 
 NPM mirror:
 
@@ -34,7 +34,7 @@ NPM mirror:
 
 Enter the app folder and execute:
 
-* `pnpm install electron@44.4.5 -D`
+* `pnpm install electron@44.9.0 -D`
 * `pnpm run install:electron`
 * `pnpm run dev`
 * `pnpm run start`
@@ -60,6 +60,17 @@ Note: In the development environment, the kernel process will not be automatical
 * `cd ../app/kernel`
 * Windows: `./SiYuan-Kernel.exe serve --mode=dev`
 * Linux/macOS: `./SiYuan-Kernel serve --mode=dev`
+
+The optional global `--home-dir <path>` flag sets the base directory for user configuration. Files such as the workspace registry and cookie key remain under `<path>/.config/siyuan/`. Relative paths are resolved against the current process directory, and missing configuration directories are created. Invalid or unwritable paths fail without falling back to the system user home. Omitting the flag preserves the existing behavior. The flag also applies to offline CLI commands such as `workspace list`.
+
+Use `--workspace` for notebook data and `--wd` for application resources independently. For example, after creating an empty `/work/siyuan-workspace` directory: `./SiYuan-Kernel serve --mode=dev --home-dir=/work/siyuan-home --workspace=/work/siyuan-workspace --wd=/work/siyuan/app`. When starting the server without an explicit workspace or a registered workspace in the selected profile, the default workspace remains under the selected home directory using the platform's existing layout (`SiYuan` on Windows/Linux, `Library/Application Support/SiYuan` on macOS). When `--home-dir` is set on Windows, `USERPROFILE` does not override it. These options do not change the mobile app's sandbox paths.
+
+### Desktop OCR packaging prerequisites
+
+Desktop packaging runs `scripts/prepare-ocr.py` to prepare the pinned models and native runtime. Run `python scripts/prepare-ocr.py --runtime windows-amd64 --check-only` or `python3 scripts/prepare-ocr.py --runtime linux-arm64 --build-worker --check-only` to check native prerequisites without downloading assets or compiling anything.
+
+* Windows: the release builder must have redistribution rights under its Visual Studio license and the matching x64/ARM64 **release** CRT files from `VC/Redist/MSVC`. The script discovers installed Visual Studio through `vswhere` or `VCToolsRedistDir`. Set `SIYUAN_OCR_VC_REDIST_DIR` to `VC/Redist/MSVC/<version>` (containing `x64` and/or `arm64`) or the target's `Microsoft.VC*.CRT` directory for a custom location or cross-host packaging. Use official Visual Studio redist files, not DLLs copied from `System32`, debug runtimes, or third-party DLL download sites. The preparation step checks architecture and required exports, bundles the transitive CRT dependencies beside ONNX Runtime, and records their SHA-256 digests and licensing notice. Keep this app-local runtime updated when preparing releases. See Microsoft's [redistribution terms](https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution#visual-c-runtime-files). It does not install system-wide runtimes or require elevation on end-user machines
+* Linux: the desktop OCR worker targets **glibc 2.28** on both AMD64 and ARM64, independently of the kernel's musl toolchain. The preparation script downloads the pinned Zig compiler from `scripts/ocr-assets.json`, verifies its checksum, and caches it in `.cache/ocr/`; the compiler is not distributed in the application. Install `binutils` for the `readelf` compatibility check. Optional `SIYUAN_OCR_CC_AMD64` and `SIYUAN_OCR_CC_ARM64` overrides select compiler commands with a glibc 2.28 or older sysroot; newer headers and artifacts requiring newer glibc symbols are rejected. `--check-only` validates the default toolchain selection without downloading it. Docker uses its separate Alpine/musl OCR build and is unchanged
 
 ### iOS
 

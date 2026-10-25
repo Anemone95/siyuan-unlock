@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -32,27 +31,28 @@ import (
 	"github.com/88250/gulu"
 	"github.com/imroc/req/v3"
 	"github.com/siyuan-note/logging"
+	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/util"
 	"golang.org/x/mod/semver"
 )
 
-func getNewVerInstallPkgPath() string {
+func getNewVerInstallPkgPath(preserve bool) string {
 	if skipNewVerInstallPkg() {
 		return ""
 	}
 
-	downloadPkgURLs, checksum, err := getUpdatePkg()
-	if err != nil {
-		return ""
+	for _, installDir := range []string{sharedInstallPackageDir(), filepath.Join(util.TempDir, "install")} {
+		if path := readyInstallPackagePath(installDir, util.Ver,
+			Conf.LoadSystem().UpdateChannel, currentInstallPackageSuffix(), Conf.CookieKey, preserve); path != "" {
+			return path
+		}
 	}
+	return ""
+}
 
-	pkg := path.Base(downloadPkgURLs[0])
-	pkgPath := filepath.Join(util.TempDir, "install", pkg)
-	localChecksum, _ := sha256Hash(pkgPath)
-	if checksum != localChecksum {
-		return ""
-	}
-	return pkgPath
+type installPackageDownload struct {
+	Metadata installPackageMetadata
+	URLs     []string
 }
 
 var checkDownloadInstallPkgLock = sync.Mutex{}
@@ -70,7 +70,7 @@ func checkDownloadInstallPkg(notifyPackageUnavailable bool) {
 	}
 	defer checkDownloadInstallPkgLock.Unlock()
 
-	downloadPkgURLs, checksum, err := getUpdatePkg()
+	pkg, err := getUpdatePkg()
 	if err != nil {
 		if notifyPackageUnavailable && errors.Is(err, errUpdatePackageUnavailable) {
 			if release, releaseErr := getUpdateRelease(false); nil == releaseErr && !isVersionUpToDate(release.Version) {
@@ -80,23 +80,29 @@ func checkDownloadInstallPkg(notifyPackageUnavailable bool) {
 		return
 	}
 
-	existingPkgPath := getNewVerInstallPkgPath()
+	existingPkgPath, err := reuseInstallPackage(sharedInstallPackageDir(), &pkg.Metadata, Conf.CookieKey)
+	if err != nil {
+		logging.LogErrorf("prepare existing install package failed: %s", err)
+		return
+	}
 	if "" != existingPkgPath {
-		// 存在经过 sha256Hash 检查的安装包
 		clearOldInstallPackagesLocked(installPackageVersion(filepath.Base(existingPkgPath)), existingPkgPath)
 		util.PushUpdateMsg("update-pkg-ready", Conf.Language(62), 15*1000)
 		return
 	}
 
-	util.PushUpdateMsg("update-pkg-downloading", Conf.Language(103), 1000*7)
 	success := false
-	for _, downloadPkgURL := range downloadPkgURLs {
-		err = downloadInstallPkg(downloadPkgURL, checksum)
+	for _, downloadPkgURL := range pkg.URLs {
+		err = downloadInstallPkg(downloadPkgURL, &pkg.Metadata)
 		if err == nil {
-			pkgPath := filepath.Join(util.TempDir, "install", path.Base(downloadPkgURL))
+			pkgPath := filepath.Join(sharedInstallPackageDir(), pkg.Metadata.FileName)
 			clearOldInstallPackagesLocked(installPackageVersion(filepath.Base(pkgPath)), pkgPath)
 			success = true
 			break
+		}
+		if errors.Is(err, errInstallPackageDownloadBusy) {
+			util.PushUpdateMsg("update-pkg-downloading", Conf.Language(421), 7000)
+			return
 		}
 	}
 	if success {
@@ -106,7 +112,7 @@ func checkDownloadInstallPkg(notifyPackageUnavailable bool) {
 	}
 }
 
-func getUpdatePkg() (downloadPkgURLs []string, checksum string, err error) {
+func getUpdatePkg() (ret *installPackageDownload, err error) {
 	release, err := getUpdateRelease(false)
 	if err != nil {
 		return
@@ -131,55 +137,80 @@ func getUpdatePkg() (downloadPkgURLs []string, checksum string, err error) {
 		err = fmt.Errorf("%w: [%s] checksum is unavailable", errUpdatePackageUnavailable, pkgName)
 		return
 	}
-	downloadPkgURLs = append(downloadPkgURLs, pkg.URLs...)
-	checksum = pkg.Checksum
+	ret = &installPackageDownload{
+		Metadata: installPackageMetadata{
+			FormatVersion: installPackageMetadataVersion,
+			Version:       release.Version,
+			Channel:       release.Channel,
+			FileName:      pkgName,
+			Checksum:      pkg.Checksum,
+		},
+		URLs: append([]string(nil), pkg.URLs...),
+	}
 	return
 }
 
-func downloadInstallPkg(pkgURL, checksum string) (err error) {
-	if "" == pkgURL || "" == checksum {
-		err = errors.New("update package URL or checksum is empty")
+func downloadInstallPkg(pkgURL string, metadata *installPackageMetadata) (err error) {
+	if "" == pkgURL || !validInstallPackageMetadata(metadata) {
+		err = errors.New("update package URL or metadata is invalid")
 		return
 	}
 
-	pkg := path.Base(pkgURL)
-	savePath := filepath.Join(util.TempDir, "install", pkg)
-	if gulu.File.IsExist(savePath) {
-		localChecksum, _ := sha256Hash(savePath)
-		if localChecksum == checksum {
-			return
-		}
-	}
-
-	err = os.MkdirAll(filepath.Join(util.TempDir, "install"), 0755)
+	pkg := metadata.FileName
+	checksum := metadata.Checksum
+	installDir := sharedInstallPackageDir()
+	savePath := filepath.Join(installDir, pkg)
+	lock, err := tryInstallPackageDownloadLock(installDir)
 	if err != nil {
-		logging.LogErrorf("create temp install dir failed: %s", err)
+		return err
+	}
+	defer lock.Close()
+	if existingPath, reuseErr := reuseInstallPackage(installDir, metadata, Conf.CookieKey); reuseErr != nil || existingPath != "" {
+		return reuseErr
+	}
+	if err = copyLegacyInstallPackage(filepath.Join(util.TempDir, "install"), installDir, metadata, Conf.CookieKey); err != nil {
+		return err
+	}
+	if existingPath, reuseErr := reuseInstallPackage(installDir, metadata, Conf.CookieKey); reuseErr != nil || existingPath != "" {
+		return reuseErr
+	}
+	temporaryFile, err := os.CreateTemp(installDir, pkg+".*.part")
+	if err != nil {
+		logging.LogErrorf("create temporary install package failed: %s", err)
+		return
+	}
+	temporaryPath := temporaryFile.Name()
+	defer func() {
+		if removeErr := os.Remove(temporaryPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			logging.LogErrorf("remove incomplete install package [%s] failed: %s", temporaryPath, removeErr)
+		}
+	}()
+	if err = temporaryFile.Close(); err != nil {
 		return
 	}
 
 	logging.LogInfof("downloading install package [%s]", pkgURL)
+	util.PushUpdateMsg("update-pkg-downloading", Conf.Language(103), 7000)
 	client := req.C().SetTLSHandshakeTimeout(7 * time.Second).SetTimeout(10 * time.Minute).DisableInsecureSkipVerify().SetUserAgent(util.UserAgent)
 	callback := func(info req.DownloadInfo) {
 		progress := fmt.Sprintf("%.2f%%", float64(info.DownloadedSize)/float64(info.Response.ContentLength)*100.0)
 		// logging.LogDebugf("downloading install package [%s %s]", pkgURL, progress)
 		util.PushStatusBar(fmt.Sprintf(Conf.Language(133), progress))
 	}
-	_, err = client.R().SetOutputFile(savePath).SetDownloadCallbackWithInterval(callback, 1*time.Second).Get(pkgURL)
+	_, err = client.R().SetOutputFile(temporaryPath).SetDownloadCallbackWithInterval(callback, 1*time.Second).Get(pkgURL)
 	if err != nil {
 		logging.LogErrorf("download install package [%s] failed: %s", pkgURL, err)
-		if removeErr := os.Remove(savePath); nil != removeErr && !os.IsNotExist(removeErr) {
-			logging.LogErrorf("remove incomplete install package [%s] failed: %s", savePath, removeErr)
-		}
 		return
 	}
 
-	localChecksum, _ := sha256Hash(savePath)
+	localChecksum, _ := sha256Hash(temporaryPath)
 	if checksum != localChecksum {
-		err = fmt.Errorf("verify checksum failed, download install package [%s] checksum [%s] not equal to downloaded [%s] checksum [%s]", pkgURL, checksum, savePath, localChecksum)
+		err = fmt.Errorf("verify checksum failed, download install package [%s] checksum [%s] not equal to downloaded [%s] checksum [%s]", pkgURL, checksum, temporaryPath, localChecksum)
 		logging.LogError(err.Error())
-		if removeErr := os.Remove(savePath); nil != removeErr && !os.IsNotExist(removeErr) {
-			logging.LogErrorf("remove invalid install package [%s] failed: %s", savePath, removeErr)
-		}
+		return
+	}
+	if err = publishInstallPackage(temporaryPath, installDir, metadata, Conf.CookieKey); err != nil {
+		logging.LogErrorf("publish install package [%s] failed: %s", pkg, err)
 		return
 	}
 	logging.LogInfof("downloaded install package [%s] to [%s]", pkgURL, savePath)
@@ -237,7 +268,7 @@ func CheckUpdate(showMsg bool) {
 		return
 	}
 
-	if Conf.System.IsMicrosoftStore {
+	if Conf.System.Load().IsMicrosoftStore {
 		return
 	}
 
@@ -270,6 +301,12 @@ func isVersionUpToDate(releaseVer string) bool {
 var skipInstallPkgPlatformCached = -1
 
 func skipNewVerInstallPkg() bool {
+	confSystemSnapshot := Conf.LoadSystem()
+	// Conf.System.DownloadInstallPkg(自动下载更新安装包) 强制赋值为false
+	if confSystemSnapshot.DownloadInstallPkg {
+		confSystemSnapshot = UpdateSystemConf(func(s *conf.System) { s.DownloadInstallPkg = false })
+	}
+
 	if skipInstallPkgPlatformCached == -1 {
 		skipInstallPkgPlatformCached = 0
 		if !gulu.OS.IsWindows() && !gulu.OS.IsDarwin() {
@@ -277,7 +314,7 @@ func skipNewVerInstallPkg() bool {
 		} else if util.ISMicrosoftStore || util.ContainerStd != util.Container {
 			skipInstallPkgPlatformCached = 1
 		} else if gulu.OS.IsWindows() {
-			plat := strings.ToLower(Conf.System.OSPlatform)
+			plat := strings.ToLower(confSystemSnapshot.OSPlatform)
 			// Windows 7, 8 and Server 2012 are no longer supported https://github.com/siyuan-note/siyuan/issues/7347
 			if strings.Contains(plat, " 7 ") || strings.Contains(plat, " 8 ") || strings.Contains(plat, "2012") {
 				skipInstallPkgPlatformCached = 1
@@ -285,7 +322,7 @@ func skipNewVerInstallPkg() bool {
 		}
 	}
 
-	if skipInstallPkgPlatformCached == 1 || !Conf.System.DownloadInstallPkg {
+	if skipInstallPkgPlatformCached == 1 || !confSystemSnapshot.DownloadInstallPkg {
 		return true
 	}
 	return false

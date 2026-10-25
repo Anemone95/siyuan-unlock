@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       unlock_ref:
-        description: Full appdev/siyuan-unlock commit SHA
+        description: Full appdev/siyuan-unlock commit SHA for the Android shell patches
         required: true
         type: string
       android_ref:
@@ -45,7 +45,14 @@ jobs:
       - uses: ./siyuan-note/.github/actions/prepare-personal-build
         with:
           version: ${{ inputs.version }}
-          unlock_ref: ${{ inputs.unlock_ref }}
+      - name: Fetch pinned Android shell patches
+        uses: actions/checkout@v4
+        with:
+          repository: appdev/siyuan-unlock
+          ref: ${{ inputs.unlock_ref }}
+          path: unlock-patches
+          persist-credentials: false
+          sparse-checkout: patches/siyuan-android
       - name: Fetch pinned Android source
         uses: actions/checkout@v4
         with:
@@ -63,7 +70,7 @@ jobs:
           done
           python ../scripts/prepare-personal-android.py .
           mkdir -p app/src/main/assets app/libs
-          python -c 'import json,subprocess; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_commit"]=subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip(); p.write_text(json.dumps(d,indent=2)+"\n")'
+          python -c 'import json,subprocess; from pathlib import Path; p=Path("../siyuan-build-inputs.json"); d=json.loads(p.read_text()); d["android_commit"]=subprocess.check_output(["git","rev-parse","HEAD"]).decode().strip(); d["unlock_commit"]=subprocess.check_output(["git","-C","../../unlock-patches","rev-parse","HEAD"]).decode().strip(); p.write_text(json.dumps(d,indent=2)+"\n")'
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -84,7 +91,7 @@ jobs:
       - name: Verify account-free sync
         shell: bash
         working-directory: ${{ github.workspace }}/siyuan-note
-        run: bash ../unlock-patches/scripts/check-account-free.sh siyuan
+        run: bash scripts/check-account-free.sh siyuan
 
       - name: Check listener and session recovery
         shell: bash

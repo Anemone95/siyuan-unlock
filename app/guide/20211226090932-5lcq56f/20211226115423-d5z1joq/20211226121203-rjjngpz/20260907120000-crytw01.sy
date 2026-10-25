@@ -6,7 +6,7 @@
 		"id": "20260907120000-crytw01",
 		"title": "加密筆記本",
 		"type": "doc",
-		"updated": "20260928150000"
+		"updated": "20261017144106"
 	},
 	"Children": [
 		{
@@ -14,7 +14,7 @@
 			"Type": "NodeHeading",
 			"Properties": {
 				"id": "20260907120000-tw00001",
-				"updated": "20260908100000"
+				"updated": "20261012014930"
 			},
 			"HeadingLevel": 2,
 			"Children": [
@@ -35,20 +35,6 @@
 				{
 					"Type": "NodeText",
 					"Data": "加密筆記本用於儲存敏感內容。其文檔、資料文件及原始檔名、資料庫定義和專用索引會加密儲存在磁碟上；一般筆記本維持原有儲存方式。鎖定後，必須使用主密碼才能開啟。"
-				}
-			]
-		},
-		{
-			"ID": "20260928150000-l1fi4f7",
-			"Type": "NodeParagraph",
-			"Properties": {
-				"id": "20260928150000-l1fi4f7",
-				"updated": "20260928150000"
-			},
-			"Children": [
-				{
-					"Type": "NodeText",
-					"Data": "將包含本機附件的普通筆記本內容貼上到已解鎖的加密筆記本時，思源會自動建立加密附件副本，並更新貼上內容中的連結。原附件保留不變，繼續供原文件使用。同一加密筆記本中的附件直接重用；複製失敗時中止貼上。加密附件的「開啟檔案位置」定位的是解密暫存副本。"
 				}
 			]
 		},
@@ -1020,6 +1006,114 @@
 				{
 					"Type": "NodeText",
 					"Data": " 中進行。"
+				}
+			]
+		},
+		{
+			"ID": "20261012014537-eewtudq",
+			"Type": "NodeHeading",
+			"Properties": {
+				"id": "20261012014537-eewtudq",
+				"updated": "20261017144106"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "附件"
+				}
+			],
+			"HeadingLevel": 2
+		},
+		{
+			"ID": "20260928150000-l1fi4f7",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260928150000-l1fi4f7",
+				"updated": "20260928150000"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "將包含本機附件的普通筆記本內容貼上到已解鎖的加密筆記本時，思源會自動建立加密附件副本，並更新貼上內容中的連結。原附件保留不變，繼續供原文件使用。同一加密筆記本中的附件直接重用；複製失敗時中止貼上。加密附件的「開啟檔案位置」定位的是解密暫存副本。"
+				}
+			]
+		},
+		{
+			"ID": "20261017144106-wmu7o58",
+			"Type": "NodeHeading",
+			"Properties": {
+				"id": "20261017144106-wmu7o58",
+				"updated": "20261017144106"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "清理未引用資源"
+				}
+			],
+			"HeadingLevel": 2
+		},
+		{
+			"ID": "20261017144106-kqu3kct",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017144106-kqu3kct",
+				"updated": "20261017144106"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "解鎖目標筆記本後，開啟 "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "文件面板"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "筆記本"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "更多"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " - "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "清理未引用資源"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "，檢視掃描結果，勾選需要清理的資源，再確認刪除。桌面端也可以在筆記本上按滑鼠右鍵開啟同一選單。"
+				}
+			]
+		},
+		{
+			"ID": "20261017144106-4r0arxr",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261017144106-4r0arxr",
+				"updated": "20261017144106"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "掃描僅針對目前的加密筆記本，任何文件或資料庫讀取失敗都會中止清理。刪除前完整備份資源密文，可在解鎖後透過資料歷史的資源檔案清理記錄復原；歷史受保留天數限制。全域清理繼續排除加密筆記本。"
 				}
 			]
 		},

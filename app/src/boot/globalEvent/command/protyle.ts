@@ -8,7 +8,7 @@ import {checkFold} from "../../../util/noRelyPCFunction";
 import {updateReadonly} from "../../../protyle/breadcrumb/action";
 import {Constants} from "../../../constants";
 import {fetchPost} from "../../../util/fetch";
-import {getSelectionOffset} from "../../../protyle/util/selection";
+import {getSelectionOffset} from "../../../protyle/util/selectionOffsets";
 
 export const onlyProtyleCommand = (options: {
     command: string,
@@ -36,7 +36,7 @@ export const onlyProtyleCommand = (options: {
     if (!options.previousRange) {
         return false;
     }
-    const nodeElement = hasClosestBlock(options.previousRange.startContainer);
+    const nodeElement = hasClosestBlock(options.previousRange.startContainer, true);
     if (!nodeElement) {
         return false;
     }

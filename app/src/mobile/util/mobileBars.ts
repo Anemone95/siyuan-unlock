@@ -28,14 +28,18 @@ const hasTextSelection = () => {
 };
 
 export const isMobileBlockSelecting = () => {
-    const multiSelectElement = scrollElement?.closest(".protyle")
-        ?.querySelector(".protyle-util--mobile [data-type='exitMultiSelectMode']");
-    return Boolean(multiSelectElement && !multiSelectElement.closest(".fn__none"));
+    const multiSelectElements = scrollElement?.closest(".protyle")
+        ?.querySelectorAll(".protyle-util--mobile [data-type='exitMultiSelectMode']");
+    return Array.from(multiSelectElements || []).some(element => !element.closest(".fn__none"));
 };
 
 const isPanelOpen = () => PANEL_IDS.some((id) => Boolean(document.getElementById(id)?.style.transform));
 
 const renderMobileBars = () => {
+    // 标题输入框位于顶栏内，编辑标题时保持栏位可见和可交互。
+    if (document.activeElement?.id === "toolbarName") {
+        barsState = reduceMobileBarsState(barsState, {type: "set-reading-bars", visible: true});
+    }
     const visibility = getMobileBarsVisibility(barsState);
     const immersive = !visibility.topbarVisible;
     document.body.classList.toggle("mobile-chrome--hidden", immersive);
@@ -142,15 +146,15 @@ export const bindMobileBarsScroll = (element: HTMLElement, onBreadcrumbPositionC
     selectionObserver = undefined;
     scrollElement = element;
     scrollElement.addEventListener("scroll", onScroll, {passive: true});
-    const selectionElement = element.closest(".protyle")?.querySelector(".protyle-util--mobile");
-    if (selectionElement) {
+    const selectionElements = element.closest(".protyle")?.querySelectorAll(".protyle-util--mobile");
+    if (selectionElements?.length) {
         selectionObserver = new MutationObserver(updateSelectionState);
-        selectionObserver.observe(selectionElement, {
+        selectionElements.forEach(selectionElement => selectionObserver.observe(selectionElement, {
             attributes: true,
             attributeFilter: ["class"],
             childList: true,
             subtree: true,
-        });
+        }));
     }
     resetMobileBars(element.scrollTop);
     updateSelectionState();
@@ -203,13 +207,24 @@ export const initMobileBars = () => {
     }
     initialized = true;
     window.addEventListener("siyuan-mobile-keyboard-change", ((event: CustomEvent<boolean>) => {
+        pauseMobileBarsScroll();
         barsState = reduceMobileBarsState(barsState, {
             type: "set-editing",
             active: event.detail,
             scrollTop: scrollElement?.scrollTop,
         });
+        if (!isMobileBarsAutoHide()) {
+            barsState = reduceMobileBarsState(barsState, {type: "set-reading-bars", visible: true});
+        }
         renderMobileBars();
     }) as EventListener);
+    window.addEventListener("resize", () => pauseMobileBarsScroll());
+    window.visualViewport?.addEventListener("resize", () => pauseMobileBarsScroll());
+    document.addEventListener("focusin", () => {
+        if (document.activeElement?.id === "toolbarName") {
+            showMobileBars();
+        }
+    });
     document.addEventListener("selectionchange", onSelectionChange);
 
     panelObserver?.disconnect();

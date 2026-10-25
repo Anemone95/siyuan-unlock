@@ -31,7 +31,7 @@ def inputs(version, tag, source, unlock, ios, android, package_version, android_
 
 def release_body(record):
     return (f"Source: {record['source_commit']}\n\n"
-            f"Unlock patches: appdev/siyuan-unlock@{record['unlock_commit']}\n\n"
+            f"Android shell patches: appdev/siyuan-unlock@{record['unlock_commit']}\n\n"
             f"iOS: Anemone95/siyuan-ios@{record['ios_commit']}\n\n"
             f"Android: siyuan-note/siyuan-android@{record['android_commit']}\n\n"
             + MARKER + json.dumps(record, sort_keys=True) + " -->\n")

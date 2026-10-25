@@ -2,9 +2,6 @@ import {showMessage} from "../../dialog/message";
 import {openPluginPublishData} from "./pluginPublish";
 import {fetchPost} from "../../util/fetch";
 import {confirmDialog} from "../../dialog/confirmDialog";
-/// #if !BROWSER
-import * as path from "path";
-/// #endif
 import {getFrontend, isMobile} from "../../util/functions";
 import {setStorageVal, writeText} from "../../protyle/util/compatibility";
 import {hasClosestByAttribute, hasClosestByClassName} from "../../protyle/util/hasClosest";
@@ -12,7 +9,7 @@ import {Plugin} from "../../plugin";
 import type {App} from "../../index";
 import {escapeHtml} from "../../util/escape";
 import {setGlobalPluginsDisabled} from "../../plugin/globalState";
-import {useShell} from "../../util/pathName";
+import {openBazaarPath} from "./openPath";
 import {previewImages} from "../../protyle/preview/image";
 import {isBazaarPackageRatingEditable, sortBazaarPackages} from "../../util/bazaarPackage";
 import {Constants} from "../../constants";
@@ -23,6 +20,14 @@ import {
     isBazaarPackageType,
 } from "./packageConfig";
 import {openRatingDialog, refreshVisibleRatingUI, syncRatingUser} from "./rating";
+import {getSettingsWindowHost} from "../setting/windowContext";
+import {
+    beginBazaarInstall,
+    cancelBazaarInstall,
+    finishBazaarInstall,
+    getBazaarInstallTask,
+    renderBazaarInstall,
+} from "./installTask";
 
 type TBazaarController = typeof import("../bazaar").bazaar;
 type TBazaarPackageSource = "downloaded" | "updated" | "bazaar";
@@ -123,9 +128,7 @@ const ACTION_HANDLERS = {
             return CONTINUE;
         }
         const item = installedItem || pkgItem;
-        /// #if !BROWSER
-        useShell("openPath", path.join(window.siyuan.config.system.dataDir, pkgType, item.name));
-        /// #endif
+        openBazaarPath(pkgType, item.name);
         return HANDLED;
     }) satisfies TBazaarActionHandler,
     "open-storage": ((context) => {
@@ -134,9 +137,7 @@ const ACTION_HANDLERS = {
         if (!item || pkgType !== "plugins" || !item.hasStorageData) {
             return CONTINUE;
         }
-        /// #if !BROWSER
-        useShell("openPath", path.join(window.siyuan.config.system.dataDir, "storage", "petal", item.name));
-        /// #endif
+        openBazaarPath(pkgType, item.name, true);
         return HANDLED;
     }) satisfies TBazaarActionHandler,
     "retry-update": ((context) => {
@@ -150,11 +151,21 @@ const ACTION_HANDLERS = {
     install: ((context, target) => {
         const {controller, app, mount, availableItem, pkgItem, pkgType} = context;
         const installItem = availableItem || pkgItem;
+        if (installItem && pkgType && getBazaarInstallTask(pkgType, installItem.name)) {
+            cancelBazaarInstall(pkgType, installItem.name);
+            renderBazaarInstall(mount.element);
+            return HANDLED;
+        }
         if (target.classList.contains("b3-button--progress") || target.hasAttribute("disabled") ||
             !installItem || !pkgType) {
             return HANDLED;
         }
         const themeAppearanceMode = pkgType === "themes" ? controller._resolveThemeAppearanceMode(installItem) : {};
+        const task = beginBazaarInstall(pkgType, installItem.name, installItem.repoURL);
+        if (!task) {
+            return HANDLED;
+        }
+        renderBazaarInstall(mount.element);
         const request = controller._beginBazaarRequest(pkgType, mount);
         const config = BAZAAR_PACKAGE_CONFIG[pkgType];
         fetchPost(config.api.install, {
@@ -166,16 +177,15 @@ const ACTION_HANDLERS = {
             ...themeAppearanceMode,
             frontend: getFrontend()
         }, response => {
+            if (task.controller.signal.aborted) {
+                return;
+            }
             controller._onBazaar(response, pkgType, request);
             if (response.code !== 0) {
-                if (controller._isBazaarRequestCurrent(pkgType, request)) {
-                    controller._refreshReadmeDetail(pkgType, installItem.name);
-                }
                 return;
             }
             if (controller._isMountCurrent(mount)) {
                 controller._genMyHTML(pkgType, app, false);
-                controller._refreshReadmeDetail(pkgType, installItem.name);
             }
             if (pkgType === "plugins") {
                 if (window.siyuan.config.bazaar.petalDisabled) {
@@ -190,6 +200,14 @@ const ACTION_HANDLERS = {
                         });
                     });
                 }
+            }
+        }, undefined, error => {
+            showMessage(error.msg);
+        }, task.controller.signal).finally(() => {
+            finishBazaarInstall(pkgType, installItem.name, task);
+            renderBazaarInstall(document);
+            if (controller._isMountCurrent(mount)) {
+                controller._refreshReadmeDetail(pkgType, installItem.name);
             }
         });
         return HANDLED;
@@ -301,12 +319,12 @@ const ACTION_HANDLERS = {
             return CONTINUE;
         }
         if (!window.siyuan.config.bazaar.petalDisabled) {
-            app.plugins.find((item: Plugin) => {
-                if (item.name === pkgItem.name) {
-                    item.openSetting();
-                    return true;
-                }
-            });
+            const host = getSettingsWindowHost();
+            if (host) {
+                void host.openPluginSetting(pkgItem.name).catch(console.error);
+            } else {
+                app.plugins.find((item: Plugin) => item.name === pkgItem.name)?.openSetting();
+            }
         }
         return HANDLED;
     }) satisfies TBazaarActionHandler,

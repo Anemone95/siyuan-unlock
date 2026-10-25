@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-// AVViewInstance 表示表格、列表、画廊或看板及其递归分组实例，列表复用表格的行列结构。
+// AVViewInstance 表示各布局及其递归分组实例，列表和日历复用表格的行列结构。
 type AVViewInstance struct {
 	table   *AVTable
 	gallery *AVGallery
@@ -31,6 +31,24 @@ func (value AVViewInstance) MarshalJSON() ([]byte, error) {
 }
 
 func avPayloadSchema(b *schemaBuilder, t reflect.Type, input bool) (*Schema, error) {
+	if t == reflect.TypeFor[*AVValueLocation]() {
+		schema, err := b.schema(t.Elem(), input)
+		return nullable(schema), err
+	}
+	if t == reflect.TypeFor[AVValueLocation]() {
+		name := t.Name()
+		if input {
+			name += "Input"
+		}
+		if _, ok := b.definitions[name]; !ok {
+			result := &Schema{Type: "object", Properties: map[string]*Schema{}, AdditionalProperties: false}
+			b.definitions[name] = result
+			if err := b.fields(result, t, input); err != nil {
+				return nil, err
+			}
+		}
+		return &Schema{Ref: "#/$defs/" + name}, nil
+	}
 	if t == reflect.TypeFor[*AVValuePatch]() {
 		schema, err := b.schema(reflect.TypeFor[AVValue](), input)
 		return nullable(schema), err
@@ -85,8 +103,7 @@ func avEmbeddedPayloadSchema(b *schemaBuilder, t reflect.Type, input bool) (*Sch
 	b.definitions[name] = result
 	var base reflect.Type
 	var own []reflect.StructField
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for field := range t.Fields() {
 		if field.Anonymous && field.Type.Kind() == reflect.Pointer {
 			base = field.Type.Elem()
 		} else {
@@ -99,8 +116,7 @@ func avEmbeddedPayloadSchema(b *schemaBuilder, t reflect.Type, input bool) (*Sch
 	for _, present := range []bool{true, false} {
 		fields := append([]reflect.StructField{}, own...)
 		if present {
-			for i := 0; i < base.NumField(); i++ {
-				field := base.Field(i)
+			for field := range base.Fields() {
 				shadowed := false
 				for _, child := range own {
 					if child.Name == field.Name {

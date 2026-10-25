@@ -16,7 +16,7 @@ class RepairLoopTest(unittest.TestCase):
     def setUp(self):
         self.head = "a" * 40
         self.context = {"version": "v3.8.6", "upstream_commit": "b" * 40, "base_commit": "c" * 40,
-                        "android_commit": "d" * 40, "unlock_commit": "e" * 40, "kind": "patch"}
+                        "android_commit": "d" * 40}
         self.pins = {"unlock_commit": "e" * 40, "ios_commit": "f" * 40, "android_commit": "d" * 40}
         self.signer = "1" * 64
         self.pr = {"number": 2, "state": "open", "draft": True, "node_id": "PR_fixture", "html_url": "https://github.com/Anemone95/siyuan-unlock/pull/2",
@@ -28,14 +28,14 @@ class RepairLoopTest(unittest.TestCase):
                     "head_sha": self.head, "html_url": "https://github.com/Anemone95/siyuan-unlock/actions/runs/100"}
         self.artifacts = [{"id": i, "name": name, "expired": False, "size_in_bytes": 100}
                           for i, name in enumerate(sorted(REPAIR.INPUTS | REPAIR.ASSETS))]
-        record = {"source_commit": self.head, "source_edits": {}, "version": "3.8.6", "unlock_commit": self.pins["unlock_commit"],
-                  "patches": [{"path": f"patch-{i}", "sha256": str(i) * 64} for i in range(5)]}
+        record = {"source_commit": self.head, "source_edits": {}, "version": "3.8.6"}
         self.records = {name: deepcopy(record) for name in REPAIR.INPUTS}
         self.records["inputs-ios"]["ios_commit"] = self.pins["ios_commit"]
-        self.records["inputs-android"].update(android_commit=self.pins["android_commit"], android_signer_sha256=self.signer)
+        self.records["inputs-android"].update(android_commit=self.pins["android_commit"], unlock_commit=self.pins["unlock_commit"],
+                                              android_signer_sha256=self.signer)
 
     def test_machine_context_requires_an_owned_issue_and_valid_tag_identity(self):
-        issue = {"user": {"login": "github-actions[bot]"}, "body": REPAIR.COPILOT["issue_body"]({**self.context, "files": [], "details": "patch failed"})}
+        issue = {"user": {"login": "github-actions[bot]"}, "body": REPAIR.COPILOT["issue_body"]({**self.context, "files": []})}
         self.assertEqual(REPAIR.context_from_issue(issue), self.context)
         self.assertIsNone(REPAIR.context_from_issue({**issue, "user": {"login": "external-user"}}))
         self.assertIsNone(REPAIR.context_from_issue({**issue, "body": issue["body"].replace('"v3.8.6"', '"master"')}))
@@ -75,11 +75,11 @@ class RepairLoopTest(unittest.TestCase):
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 REPAIR.verify_artifacts(self.artifacts, records, self.head, "v3.8.6", self.pins, self.signer)
 
-    def test_artifacts_reject_bad_signer_changed_patch_inputs_and_expiration(self):
+    def test_artifacts_reject_bad_signer_changed_android_shell_patches_and_expiration(self):
         with self.assertRaises(ValueError):
             REPAIR.verify_artifacts(self.artifacts, self.records, self.head, "v3.8.6", self.pins, "0" * 64)
         records = deepcopy(self.records)
-        records["inputs-ios"]["patches"][0]["sha256"] = "f" * 64
+        records["inputs-android"]["unlock_commit"] = "0" * 40
         with self.assertRaises(ValueError):
             REPAIR.verify_artifacts(self.artifacts, records, self.head, "v3.8.6", self.pins, self.signer)
         artifacts = deepcopy(self.artifacts)

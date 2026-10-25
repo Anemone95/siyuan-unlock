@@ -136,7 +136,8 @@ func compileHighlightingRegexp(keywords []string, caseSensitive, splitWords bool
 	}
 
 	var re strings.Builder
-	re.WriteString(ic + "(")
+	re.WriteString(ic)
+	re.WriteString("(")
 	for i, k := range keywords {
 		if "" == k {
 			continue
@@ -146,7 +147,7 @@ func compileHighlightingRegexp(keywords []string, caseSensitive, splitWords bool
 		if splitWords {
 			wordBoundary = lex.IsASCIILetterNums(gulu.Str.ToBytes(k)) // Improve virtual reference split words https://github.com/siyuan-note/siyuan/issues/7833
 		}
-		if !util.SearchHanSensitive {
+		if !util.SearchHanSensitive.Load() {
 			// 不区分繁简：将关键字逐字符展开为繁简等价字符类，如 "诗经" -> "[诗詩][经經]"
 			k = hanInsensitiveRegexp(k)
 		} else {

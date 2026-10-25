@@ -9,13 +9,13 @@ import {
     type StackRight,
     type SwitchQueryItem
 } from "./parts";
-import {escapeAttr} from "../../util/escape";
+import {escapeHtmlTextAndAttr, escapeAttr} from "../../util/escape";
 import {buildRangeValues} from "../setting/domIO";
 import {genConfigItemMainHtml, genConfigItemName, genSwitchRow} from "./fragments";
 
 export const genNumberInputHtml = (
     id: string,
-    value: number,
+    value: number | "",
     min?: number,
     max?: number,
     step?: string,
@@ -69,15 +69,15 @@ const genTextBlockFieldHtml = (
     spellcheck = window.siyuan.config.editor.spellcheck,
 ): string => {
     if (mode === "textarea") {
-        return `<textarea class="b3-text-field fn__block" id="${id}" spellcheck="${spellcheck}">${Lute.EscapeHTMLStr(value)}</textarea>`;
+        return `<textarea class="b3-text-field fn__block" id="${id}" spellcheck="${spellcheck}">${escapeHtmlTextAndAttr(value)}</textarea>`;
     }
     if (mode === "input-password") {
         return `<div class="b3-form__icona fn__block">
-    <input id="${id}" type="password" spellcheck="false" class="b3-text-field b3-form__icona-input" value="${Lute.EscapeHTMLStr(value)}">
+    <input id="${id}" type="password" spellcheck="false" class="b3-text-field b3-form__icona-input" value="${escapeHtmlTextAndAttr(value)}">
     <svg class="b3-form__icona-icon" data-action="togglePassword" style="user-select: none;"><use xlink:href="#iconEye"></use></svg>
 </div>`;
     }
-    return `<input class="b3-text-field fn__block" id="${id}" type="text" spellcheck="${spellcheck}" value="${Lute.EscapeHTMLStr(value)}"/>`;
+    return `<input class="b3-text-field fn__block" id="${id}" type="text" spellcheck="${spellcheck}" value="${escapeHtmlTextAndAttr(value)}"/>`;
 };
 
 const genSwitchQueryItemHtml = (item: SwitchQueryItem): string => {
@@ -133,9 +133,9 @@ export const genTextPairHtml = (
     `<div class="fn__flex b3-label config-item">
     ${genConfigItemMainHtml(title, desc)}
     <span class="fn__space"></span>
-    <input class="b3-text-field fn__flex-center fn__size96" id="${left.id}" value="${Lute.EscapeHTMLStr(left.readConfig() as string)}">
+    <input class="b3-text-field fn__flex-center fn__size96" id="${left.id}" value="${escapeHtmlTextAndAttr(left.readConfig() as string)}">
     <span class="fn__space"></span>
-    <input class="b3-text-field fn__flex-center fn__size96" id="${right.id}" value="${Lute.EscapeHTMLStr(right.readConfig() as string)}">
+    <input class="b3-text-field fn__flex-center fn__size96" id="${right.id}" value="${escapeHtmlTextAndAttr(right.readConfig() as string)}">
 </div>`;
 
 const genStackRight = (r: StackRight): string => {
@@ -158,7 +158,7 @@ const genStackLeft = (left: StackLeft, hasRight: boolean): string => {
     if (!hasRight) {
         return left.kind === "title" ? genConfigItemName(left.text) : `<div class="b3-label__text">${left.text}</div>`;
     }
-    return `<div class="fn__flex-center fn__flex-1 config-item__main${left.kind === "title" ? " config-name" : ""}">${left.text}</div>`;
+    return `<div class="fn__flex-center fn__flex-1 config-item__main ${left.kind === "title" ? "config-name" : "b3-label__text"}">${left.text}</div>`;
 };
 
 /** 纵向堆叠行 */
@@ -230,7 +230,7 @@ const renderControlParts = (parts: RowPart[]): string => {
             return `<div class="fn__flex b3-label config-item">
     ${genConfigItemMainHtml(title, desc ?? "")}
     <span class="fn__space"></span>
-    <input class="b3-text-field fn__flex-center fn__size200" id="${control.id}"${control.spellcheck === undefined ? "" : ` spellcheck="${control.spellcheck}"`} value="${Lute.EscapeHTMLStr(control.readConfig() as string)}"/>
+    <input class="b3-text-field fn__flex-center fn__size200" id="${control.id}"${control.spellcheck === undefined ? "" : ` spellcheck="${control.spellcheck}"`} value="${escapeHtmlTextAndAttr(control.readConfig() as string)}"/>
 </div>`;
         case "textBlock": {
             return `<div class="b3-label config-item">
@@ -271,7 +271,13 @@ export const genConfigGroup = (itemsHtml: string, title?: string, attrs?: Record
     const attrsHtml = attrs
         ? Object.entries(attrs).map(([key, value]) => ` ${key}="${escapeAttr(value)}"`).join("")
         : "";
-    return `<div class="config-group"${attrsHtml}>${title ? `<div class="config-title">${title}</div>` : ""}<div class="config-items">${itemsHtml}</div></div>`;
+    const toggle = title && attrs?.["data-config-group-id"]
+        ? `<button type="button" class="block__icon block__icon--show block__icon--tap" data-action="toggle-config-group" aria-expanded="true" aria-label="${escapeAttr(window.siyuan.languages.collapse + " - " + title)}"><svg><use xlink:href="#iconDown"></use></svg></button>`
+        : "";
+    const titleHtml = title
+        ? `<div class="config-title${toggle ? " config-title--action" : ""}">${toggle ? `<span class="fn__flex-1">${title}</span>${toggle}` : title}</div>`
+        : "";
+    return `<div class="config-group"${attrsHtml}>${titleHtml}<div class="config-items">${itemsHtml}</div></div>`;
 };
 
 type GroupedItemsView = {

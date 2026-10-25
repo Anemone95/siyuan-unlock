@@ -76,28 +76,15 @@ class CopilotConflictTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Resource not accessible"):
                 COPILOT.check_access("user-token-fixture")
 
-    def test_patch_failure_has_separate_identity_and_actionable_instructions(self):
-        context = {**self.context, "kind": "patch", "unlock_commit": "d" * 40,
-                   "files": ["patches/siyuan/default-config.patch"], "details": "error: kernel/api/setting.go: patch does not apply"}
-        body = COPILOT.issue_body(context)
-        self.assertIn("upstream-patch-conflict:", body)
-        self.assertIn(context["unlock_commit"], body)
-        self.assertIn("kernel/api/setting.go", body)
-        self.assertIn("scripts/personal-build-inputs.json", body)
-        self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker(self.context))
-        self.assertNotEqual(COPILOT.conflict_marker(context), COPILOT.conflict_marker({**context, "unlock_commit": "e" * 40}))
-
     def test_initial_tasks_include_the_integration_acceptance_checks(self):
-        contexts = [self.context, {**self.context, "kind": "patch", "unlock_commit": "d" * 40, "details": "patch does not apply"}]
-        for context in contexts:
-            with self.subTest(kind=context.get("kind", "merge")):
-                body = COPILOT.issue_body(context)
-                for requirement in ["git merge-base --is-ancestor " + context["upstream_commit"] + " HEAD",
-                                    "app/package.json", "kernel/util/working.go", "`v3.8.6` 与 `3.8.6`",
-                                    "未提交修改、删除及未跟踪文件", "应用补丁后的源码", "source_commit", "source_edits",
-                                    "partial clone", "通过项、失败项及未验证项", "由维护者确认合并",
-                                    "保持草稿 PR", "四平台 CI/CD", "临时外部故障", "全部产物"]:
-                    self.assertIn(requirement, body)
+        body = COPILOT.issue_body(self.context)
+        for requirement in ["git merge-base --is-ancestor " + self.context["upstream_commit"] + " HEAD",
+                            "app/package.json", "kernel/util/working.go", "解锁功能直接维护在本仓库源码中",
+                            "scripts/prepare-personal-build.py --source . --destination", "scripts/check-account-free.sh",
+                            "source_commit", "source_edits", "partial clone", "通过项、失败项及未验证项", "由维护者确认合并",
+                            "保持草稿 PR", "四平台 CI/CD", "临时外部故障", "全部产物"]:
+            self.assertIn(requirement, body)
+        self.assertNotIn("--patch-repo", body)
 
     def test_api_accepts_empty_successful_workflow_dispatch_response(self):
         with patch.object(COPILOT.subprocess, "check_output", return_value=""):

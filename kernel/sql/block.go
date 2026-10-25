@@ -25,7 +25,6 @@ import (
 
 	"github.com/88250/gulu"
 	"github.com/88250/lute/ast"
-	"github.com/88250/lute/editor"
 	"github.com/88250/lute/html"
 	"github.com/88250/lute/parse"
 	"github.com/siyuan-note/logging"
@@ -109,6 +108,9 @@ func queryBlockRowIDsTx(tx *sql.Tx, blocks []*Block) (ret map[string]int64, err 
 		}
 		ret[id] = rowID
 	}
+	if err = rows.Err(); err != nil {
+		logging.LogErrorf("iterate block rowids failed: %s", err)
+	}
 	return
 }
 
@@ -170,23 +172,24 @@ func indexNode(tx *sql.Tx, id, boxID string) (err error) {
 		return
 	}
 
-	content := nodeStaticContent(node, nil, true, indexAssetPath, true, true)
-	content = strings.ReplaceAll(content, editor.Zwsp, "")
+	block, _ := buildBlockFromNode(node, tree)
 	var rowID int64
 	if rowID, err = blockRowIDByBlockID(tx, id); err != nil {
 		tx.Rollback()
 		return
 	}
-	stmt := "UPDATE blocks_fts SET content = ? WHERE rowid = ?"
-	if err = execStmtTx(tx, stmt, content, rowID); err != nil {
+	stmt := "UPDATE blocks_fts SET content = ?, fcontent = ? WHERE rowid = ?"
+	if err = execStmtTx(tx, stmt, block.Content, block.FContent, rowID); err != nil {
 		tx.Rollback()
 		return
 	}
-	stmt = "UPDATE blocks SET content = ? WHERE id = ?"
-	if err = execStmtTx(tx, stmt, content, id); err != nil {
+	stmt = "UPDATE blocks SET content = ?, fcontent = ?, length = ? WHERE id = ?"
+	if err = execStmtTx(tx, stmt, block.Content, block.FContent, block.Length, id); err != nil {
 		tx.Rollback()
 		return
 	}
+	removeBlockCache(id)
+	putBlockCache(block)
 	return
 }
 
@@ -244,9 +247,11 @@ func nodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATi
 				}
 			}
 			if ast.NodeCallout == n.Type {
-				buf.WriteString(n.CalloutType + " ")
+				buf.WriteString(n.CalloutType)
+				buf.WriteString(" ")
 				if "" != n.CalloutIcon && 0 == n.CalloutIconType {
-					buf.WriteString(n.CalloutIcon + " ")
+					buf.WriteString(n.CalloutIcon)
+					buf.WriteString(" ")
 				}
 				if "" != n.CalloutTitle {
 					if titleTree := parse.Inline("", []byte(n.CalloutTitle), luteEngine.ParseOptions); nil != titleTree && nil != titleTree.Root.FirstChild.FirstChild {
@@ -358,12 +363,14 @@ func nodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATi
 			if n.IsTextMarkType("a") && includeTextMarkATitleURL {
 				// 搜索不到超链接元素的 URL 和标题 https://github.com/siyuan-note/siyuan/issues/7352
 				if "" != n.TextMarkATitle {
-					buf.WriteString(" " + util.UnescapeHTML(n.TextMarkATitle))
+					buf.WriteString(" ")
+					buf.WriteString(util.UnescapeHTML(n.TextMarkATitle))
 				}
 
 				if !strings.HasPrefix(n.TextMarkAHref, "assets/") || includeAssetPath {
 					href := util.UnescapeHTML(n.TextMarkAHref)
-					buf.WriteString(" " + util.UnescapeHTML(href))
+					buf.WriteString(" ")
+					buf.WriteString(util.UnescapeHTML(href))
 				}
 			}
 		case ast.NodeBackslashContent:

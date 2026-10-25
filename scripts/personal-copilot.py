@@ -28,29 +28,14 @@ def request(path, payload=None, token=None, method="POST"):
 
 
 def conflict_marker(context):
-    if context.get("kind") == "patch":
-        return f"<!-- upstream-patch-conflict: {context['upstream_commit']} {context['unlock_commit']} -->"
     return f"<!-- upstream-merge-conflict: {context['upstream_commit']} -->"
 
 
 def issue_body(context):
     marker = conflict_marker(context)
-    record = {key: context[key] for key in ("version", "upstream_commit", "base_commit", "android_commit", "unlock_commit", "kind") if key in context}
-    problem = f"与上游 {context['version']} 的合并存在冲突。"
-    patch_guidance = "沿用当前固定 iOS 壳和解锁补丁提交。"
-    if context.get("kind") == "patch":
-        problem = f"解锁补丁与上游 {context['version']} 不兼容。"
-        patch_guidance = f"""当前解锁补丁来自 appdev/siyuan-unlock@`{context['unlock_commit']}`，适用性检查报告：
-
-```text
-{context['details'].strip()}
-```
-
-先检查补丁提供方是否已有兼容提交，经验证后更新 `scripts/personal-build-inputs.json` 中的固定 SHA。若补丁源尚未适配，在本仓库维护最小、可审查的兼容补丁，并同步构建准备逻辑和回归测试。保持五个解锁补丁的完整功能，以及上游源码与独立构建目录的边界。沿用当前固定 iOS 壳提交。
-
-复现时检出固定补丁源，再执行 `python scripts/prepare-personal-build.py --source . --patch-repo <补丁检出目录> --destination <新临时目录>/siyuan --version {context['version']}`，确认全部补丁依次通过检查和应用。"""
+    record = {key: context[key] for key in ("version", "upstream_commit", "base_commit", "android_commit")}
     paths = "\n".join("- " + json.dumps(path, ensure_ascii=False) for path in context["files"])
-    return f"""{problem}
+    return f"""与上游 {context['version']} 的合并存在冲突。
 
 请从本仓库最新 master 创建修复 PR，合并官方 siyuan-note/siyuan 的 {context['version']} tag，并保留真正的 Git merge 历史。该 tag 已解析为 `{context['upstream_commit']}`；复现时个人分支为 `{context['base_commit']}`。
 
@@ -60,7 +45,7 @@ def issue_body(context):
 
 将修改限定为本次适配所需内容，保留个人恢复模块及其 hook。iOS 恢复继续仅由事件回调驱动，保留编辑状态、未确认事务和 WebSocket session 身份校验。Android 壳对应版本的提交为 `{context['android_commit']}`。
 
-{patch_guidance}
+解锁功能直接维护在本仓库源码中，随上游改动一并适配并保留完整行为。沿用当前固定 iOS 壳和 Android 壳补丁提交。
 
 修复与验证期间保持草稿 PR。完成代码后，自动验收控制器会固定最新提交运行四平台 CI/CD；失败日志会反馈到本 PR，请持续修复并提交新的候选。控制器核验该提交的检查、构建来源与全部产物后，才会转为待审核并请求维护者 review。若日志证实是临时外部故障，请说明诊断；代理完成事件会推动同一提交重新验证。合并与正式发布仍由维护者确认后接续。
 
@@ -75,10 +60,9 @@ Go 测试在 kernel 目录执行 `go test -race -timeout 120s ./server/mobiletra
 提交验收清单：
 
 1. 在修复 PR 分支真实合并目标 tag，执行 `git merge-base --is-ancestor {context['upstream_commit']} HEAD` 并确认成功。核对 `app/package.json` 与 `kernel/util/working.go` 的版本均为 `{context['version'].removeprefix('v')}`。
-2. 若涉及本地版本化补丁覆盖，确保 `{context['version']}` 与 `{context['version'].removeprefix('v')}` 选择同一补丁；明确拒绝补丁的未提交修改、删除及未跟踪文件，并为这些情况补充回归。应用已提交 Git 对象中的规范字节，记录实际应用补丁的 SHA-256，保留 Windows 换行一致性。
-3. 使用已提交且干净的候选 HEAD 生成独立构建目录，确认五个补丁依次检查并应用成功，再在应用补丁后的源码中执行受影响 API、账户同步及恢复回归。记录验证时的 HEAD，以及构建记录中的 `source_commit`、`source_edits`，使测试对象与 PR 最新提交一致。
-4. 若代理采用 partial clone、缺少 SDK 或工具，先在独立完整检出中验证同一 HEAD；保留原测试断言，将仍无法运行的检查明确列为环境限制，交由正常 CI 复验。
-5. PR 描述列出实际命令、通过项、失败项及未验证项。失败和未运行的检查保留准确状态；每次修改后补齐对应回归。提交保留在修复 PR 分支，由维护者确认合并后接续发布。
+2. 使用已提交且干净的候选 HEAD 执行 `python scripts/prepare-personal-build.py --source . --destination <新临时目录>/siyuan --version {context['version']}` 生成独立构建目录，在其中执行受影响 API、账户同步（`bash scripts/check-account-free.sh <新临时目录>/siyuan`）及恢复回归。记录验证时的 HEAD，以及构建记录中的 `source_commit`、`source_edits`，使测试对象与 PR 最新提交一致。
+3. 若代理采用 partial clone、缺少 SDK 或工具，先在独立完整检出中验证同一 HEAD；保留原测试断言，将仍无法运行的检查明确列为环境限制，交由正常 CI 复验。
+4. PR 描述列出实际命令、通过项、失败项及未验证项。失败和未运行的检查保留准确状态；每次修改后补齐对应回归。提交保留在修复 PR 分支，由维护者确认合并后接续发布。
 
 {marker}
 {CONTEXT_MARKER}{json.dumps(record, sort_keys=True)} -->
@@ -116,8 +100,7 @@ def delegate(context, token):
             break
         page += 1
     if issue is None:
-        title = "Unlock patch incompatibility" if context.get("kind") == "patch" else "Merge conflicts"
-        payload = {"title": f"{title} with upstream {context['version']}", "body": issue_body(context)}
+        payload = {"title": f"Merge conflicts with upstream {context['version']}", "body": issue_body(context)}
         created = request(f"repos/{REPOSITORY}/issues", payload)
         issue = request(f"repos/{REPOSITORY}/issues/{created['number']}")
         if issue["title"] != payload["title"] or issue["body"] != payload["body"]:

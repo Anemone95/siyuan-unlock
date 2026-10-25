@@ -139,6 +139,8 @@ func getTemplateReadmePaths(templateDir string) map[string]struct{} {
 }
 
 func SearchTemplate(keyword string) (ret []*TemplateSearchResult) {
+	confSearchReadSnapshot := Conf.LoadSearch()
+
 	ret = []*TemplateSearchResult{}
 
 	templates := filepath.Join(util.DataDir, "templates")
@@ -215,7 +217,7 @@ func SearchTemplate(keyword string) (ret []*TemplateSearchResult) {
 					content = strings.TrimPrefix(path, templates)
 					content = strings.TrimSuffix(content, ".md")
 					content = filepath.ToSlash(content)
-					_, content = search.MarkText(content, strings.Join(keywords, search.TermSep), 32, Conf.Search.CaseSensitive)
+					_, content = search.MarkText(content, strings.Join(keywords, search.TermSep), 32, confSearchReadSnapshot.CaseSensitive)
 					relativePath, relErr := filepath.Rel(templates, path)
 					if nil != relErr {
 						return nil
@@ -245,7 +247,7 @@ func SearchTemplate(keyword string) (ret []*TemplateSearchResult) {
 			}
 			if hit {
 				content = filepath.ToSlash(content)
-				_, content = search.MarkText(content, strings.Join(keywords, search.TermSep), 32, Conf.Search.CaseSensitive)
+				_, content = search.MarkText(content, strings.Join(keywords, search.TermSep), 32, confSearchReadSnapshot.CaseSensitive)
 				b := &TemplateSearchResult{Path: filepath.Join(templates, group.Name()), RelativePath: group.Name(), Content: content}
 				results = append(results, &result{item: b, score: score})
 			}
@@ -701,7 +703,7 @@ func validateTemplateAttributeViewNode(node *ast.Node, attrView *av.AttributeVie
 		return
 	}
 	visibleViewCount := 0
-	for _, visibleViewID := range strings.Split(visibleViewIDs, ",") {
+	for visibleViewID := range strings.SplitSeq(visibleViewIDs, ",") {
 		visibleViewID = strings.TrimSpace(visibleViewID)
 		if "" == visibleViewID {
 			continue
@@ -864,7 +866,7 @@ func applyTemplateAttributeViewPlan(node *ast.Node, plan *templateAttributeViewP
 		}
 		if visibleViewIDs := strings.TrimSpace(node.IALAttr(av.NodeAttrVisibleViewIDs)); "" != visibleViewIDs {
 			var copiedVisibleViewIDs []string
-			for _, sourceViewID := range strings.Split(visibleViewIDs, ",") {
+			for sourceViewID := range strings.SplitSeq(visibleViewIDs, ",") {
 				sourceViewID = strings.TrimSpace(sourceViewID)
 				if copiedViewID := plan.copiedViewIDs[sourceViewID]; "" != copiedViewID {
 					copiedVisibleViewIDs = append(copiedVisibleViewIDs, copiedViewID)
@@ -957,6 +959,11 @@ func PreviewTemplateSource(p, id, content string) (tree *parse.Tree, dom string,
 
 func renderTemplateSource(p, id string, mode TemplateRenderMode, content *string) (tree *parse.Tree, dom string,
 	summary *TemplateDocTreePlanSummary, err error) {
+	return renderTemplateSourceAt(p, id, mode, content, nil)
+}
+
+func renderTemplateSourceAt(p, id string, mode TemplateRenderMode, content *string, now *time.Time) (tree *parse.Tree, dom string,
+	summary *TemplateDocTreePlanSummary, err error) {
 	if TemplateRenderModeContent != mode && TemplateRenderModePreview != mode && TemplateRenderModeEditorInsert != mode {
 		err = fmt.Errorf("unsupported template render mode [%s]", mode)
 		return
@@ -1015,6 +1022,9 @@ func renderTemplateSource(p, id string, mode TemplateRenderMode, content *string
 
 	goTpl := template.New("").Delims(".action{", "}")
 	tplFuncMap := filesys.BuiltInTemplateFuncs()
+	if now != nil {
+		tplFuncMap["now"] = func() time.Time { return *now }
+	}
 	tplFuncMap["createDocTree"] = collector.create
 	tplFuncMap["renderDocRef"] = collector.renderDocRef
 	sql.SQLTemplateFuncs(&tplFuncMap, sourceTree.Box)
@@ -1134,7 +1144,7 @@ func renderTemplateSource(p, id string, mode TemplateRenderMode, content *string
 	restoreTabsSelection()
 	// 用映射成套改写模板内部的自引用，并补全指向外部块的引用锚文本
 	// 仅命中 blockIDs 的引用（模板内部块）才会改写 ID；未命中的（外部块）保持不变
-	treenode.WalkWithTabTitles(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
+	treenode.WalkWithInlineTitles(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
 		if !entering {
 			return ast.WalkContinue
 		}
@@ -1297,11 +1307,15 @@ func applyDocContentTemplateAfterIndex(templatePath, docID string) error {
 }
 
 func applyDocContentTemplate(templatePath, docID string) error {
+	return applyDocContentTemplateAt(templatePath, docID, nil)
+}
+
+func applyDocContentTemplateAt(templatePath, docID string, now *time.Time) error {
 	absPath, err := resolveDocContentTemplatePath(templatePath)
 	if nil != err {
 		return err
 	}
-	templateTree, templateDOM, err := RenderTemplate(absPath, docID, false)
+	templateTree, templateDOM, _, err := renderTemplateSourceAt(absPath, docID, TemplateRenderModeContent, nil, now)
 	if nil != err {
 		return err
 	}
@@ -1353,11 +1367,11 @@ func resolveDocContentTemplatePath(templatePath string) (string, error) {
 	if !filelock.IsExist(absPath) {
 		return "", fmt.Errorf("content template [%s] not found", templatePath)
 	}
-	realRoot, err := filepath.EvalSymlinks(templateRoot)
+	realRoot, err := util.ResolveRealPath(templateRoot)
 	if nil != err {
 		return "", err
 	}
-	realPath, err := filepath.EvalSymlinks(absPath)
+	realPath, err := util.ResolveRealPath(absPath)
 	if nil != err {
 		return "", err
 	}

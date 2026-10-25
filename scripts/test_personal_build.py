@@ -17,14 +17,12 @@ class BuildSnapshotTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.source = self.base / "source"
-        self.patches = self.base / "patches"
-        for repo in [self.source, self.patches]:
-            repo.mkdir()
-            self.git(repo, "init", "--quiet")
-            self.git(repo, "config", "user.name", "Build test")
-            self.git(repo, "config", "user.email", "build-test@example.invalid")
-            self.git(repo, "config", "commit.gpgsign", "false")
-            self.git(repo, "config", "core.autocrlf", "false")
+        self.source.mkdir()
+        self.git(self.source, "init", "--quiet")
+        self.git(self.source, "config", "user.name", "Build test")
+        self.git(self.source, "config", "user.email", "build-test@example.invalid")
+        self.git(self.source, "config", "commit.gpgsign", "false")
+        self.git(self.source, "config", "core.autocrlf", "false")
         (self.source / "app").mkdir()
         (self.source / "app/package.json").write_text(json.dumps({"version": "3.8.5", "packageManager": "pnpm@12.3.4"}))
         (self.source / "kernel/util").mkdir(parents=True)
@@ -32,11 +30,6 @@ class BuildSnapshotTest(unittest.TestCase):
         (self.source / "module").mkdir()
         (self.source / "module/old.txt").write_text("before\n")
         self.commit(self.source)
-        for index, name in enumerate(BUILD.PATCHES):
-            file = self.patches / "patches/siyuan" / name
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text(f"diff --git a/unlock-{index} b/unlock-{index}\nnew file mode 100644\n--- /dev/null\n+++ b/unlock-{index}\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
-        self.commit(self.patches)
 
     def git(self, repo, *args):
         return subprocess.check_output(["git", "-C", str(repo), *args], stderr=subprocess.DEVNULL)
@@ -46,7 +39,14 @@ class BuildSnapshotTest(unittest.TestCase):
         self.git(repo, "commit", "--quiet", "-m", "Build fixture")
 
     def prepare(self, name="build", version="v3.8.5"):
-        return BUILD.prepare(self.source, self.patches, self.base / name, version)
+        return BUILD.prepare(self.source, self.base / name, version)
+
+    def test_clean_source_records_the_committed_snapshot(self):
+        record = self.prepare()
+        self.assertEqual(record, {"source_commit": self.git(self.source, "rev-parse", "HEAD").decode().strip(),
+                                  "source_edits": {}, "version": "3.8.5", "package_manager": "pnpm@12.3.4"})
+        self.assertEqual(json.loads((self.base / "build-build-inputs.json").read_text()), record)
+        self.assertEqual((self.base / "build/module/old.txt").read_text(), "before\n")
 
     def test_dirty_source_is_copied_and_original_preserved(self):
         (self.source / "module/old.txt").write_text("edited\n")
@@ -56,9 +56,7 @@ class BuildSnapshotTest(unittest.TestCase):
         self.assertEqual(self.git(self.source, "diff", "HEAD"), before)
         self.assertEqual((self.base / "build/module/old.txt").read_text(), "edited\n")
         self.assertEqual((self.base / "build/new file.txt").read_text(), "new\n")
-        self.assertEqual(len(record["patches"]), 5)
         self.assertEqual(len(record["source_edits"]), 2)
-        self.assertEqual((self.base / "build/unlock-4").read_text(), "enabled\n")
 
     def test_directory_replaced_with_file(self):
         shutil.rmtree(self.source / "module")
@@ -74,85 +72,11 @@ class BuildSnapshotTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.prepare()
 
-    def test_rejects_modified_patch(self):
-        file = self.patches / "patches/siyuan/default-config.patch"
-        file.write_text(file.read_text() + "\n")
-        with self.assertRaises(ValueError):
-            self.prepare()
-        self.assertFalse((self.base / "build").exists())
-
-    def test_reports_the_exact_incompatible_patch_and_git_diagnostic(self):
-        file = self.patches / "patches/siyuan/default-config.patch"
-        file.write_text("diff --git a/module/old.txt b/module/old.txt\n--- a/module/old.txt\n+++ b/module/old.txt\n@@ -1 +1 @@\n-incompatible context\n+after\n", encoding="utf-8", newline="\n")
-        self.commit(self.patches)
-        with self.assertRaises(BUILD.PatchApplicationError) as failure:
-            self.prepare()
-        self.assertEqual(failure.exception.patch, "patches/siyuan/default-config.patch")
-        self.assertIn("module/old.txt", failure.exception.detail)
-        self.assertEqual((self.source / "module/old.txt").read_text(), "before\n")
-
     def test_rejects_mixed_kernel_and_frontend_versions(self):
         (self.source / "kernel/util/working.go").write_text('package util\nconst Ver = "3.6.5"\n')
         with self.assertRaises(ValueError):
             self.prepare()
         self.assertFalse((self.base / "build").exists())
-
-    def test_windows_line_endings_use_canonical_git_patch(self):
-        self.git(self.patches, "config", "core.autocrlf", "true")
-        for file in (self.patches / "patches/siyuan").glob("*.patch"):
-            file.write_bytes(file.read_bytes().replace(b"\n", b"\r\n"))
-        record = self.prepare()
-        self.assertEqual(record["unlock_commit"], self.git(self.patches, "rev-parse", "HEAD").decode().strip())
-
-    def test_uses_versioned_source_patch_override_when_present(self):
-        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
-        override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
-        self.commit(self.source)
-        record = self.prepare()
-        self.assertEqual((self.base / "build/override-default").read_text(), "enabled\n")
-        self.assertFalse((self.base / "build/unlock-1").exists())
-        selected = [item for item in record["patches"] if item["path"] == "patches/siyuan/default-config.patch"][0]
-        self.assertEqual(selected["override"], "scripts/patches/v3.8.5/default-config.patch")
-
-    def test_override_rejects_uncommitted_edit(self):
-        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
-        override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
-        self.commit(self.source)
-        override.write_text(override.read_text() + "\n")
-        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
-            self.prepare()
-
-    def test_version_without_v_prefix_uses_same_override_directory(self):
-        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
-        override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_text("diff --git a/override-default b/override-default\nnew file mode 100644\n--- /dev/null\n+++ b/override-default\n@@ -0,0 +1 @@\n+enabled\n", encoding="utf-8", newline="\n")
-        self.commit(self.source)
-        record = self.prepare(version="3.8.5")
-        self.assertEqual((self.base / "build/override-default").read_text(), "enabled\n")
-        selected = [item for item in record["patches"] if item["path"] == "patches/siyuan/default-config.patch"][0]
-        self.assertEqual(selected["override"], "scripts/patches/v3.8.5/default-config.patch")
-
-    def test_override_rejects_uncommitted_deletion(self):
-        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
-        override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_bytes((self.patches / "patches/siyuan/default-config.patch").read_bytes())
-        self.commit(self.source)
-        override.unlink()
-        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
-            self.prepare()
-        self.assertFalse(override.exists())
-        self.assertFalse((self.base / "build").exists())
-
-    def test_override_rejects_untracked_input(self):
-        override = self.source / "scripts/patches/v3.8.5/default-config.patch"
-        override.parent.mkdir(parents=True, exist_ok=True)
-        override.write_text("uncommitted patch", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "Patch override has uncommitted modifications"):
-            self.prepare()
-        self.assertEqual(override.read_text(), "uncommitted patch")
-
 
 if __name__ == "__main__":
     unittest.main()

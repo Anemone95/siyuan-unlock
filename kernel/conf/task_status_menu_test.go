@@ -23,11 +23,11 @@ func TestTaskStatusMenuMigration(t *testing.T) {
 		t.Run(fixture.Name, func(t *testing.T) {
 			fixture.Input.ID, fixture.Input.Name = "custom", "Custom"
 			config := &EntryVisibility{Version: 5, Active: "custom", Profiles: []*EntryVisibilityProfile{&fixture.Input}}
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				NormalizeEntryVisibility(config, EntryVisibilityProfileFull)
-				if config.Version != 6 || !reflect.DeepEqual(fixture.Input.Entries, fixture.Expected.Entries) ||
+				if config.Version != EntryVisibilityVersion || !reflect.DeepEqual(fixture.Input.Entries, fixture.Expected.Entries) ||
 					!reflect.DeepEqual(fixture.Input.Orders, fixture.Expected.Orders) {
-					t.Fatalf("unexpected migration: %+v", fixture.Input)
+					t.Fatalf("unexpected migration: version=%d, expected=%d, profile=%+v", config.Version, EntryVisibilityVersion, fixture.Input)
 				}
 			}
 		})

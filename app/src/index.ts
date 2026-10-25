@@ -1,13 +1,17 @@
 import {Constants} from "./constants";
+import {refreshSettingConfig} from "./config/setting/sync";
 import {closeNotebookHistoryDialogs} from "./history/notebookDialogs";
+import {closeNotebookLivePhotos} from "./protyle/preview/livePhoto";
 import {systemConfig} from "./config/systemConfig";
 import {openStandaloneDatabaseItemByURI} from "./protyle/render/av/openStandaloneDatabaseItem";
 /// #if BROWSER
 import "./util/iosWindowControls";
+import {registerDesktopBackNavigation} from "./boot/globalEvent/nativeBack";
 /// #endif
 import {Menus} from "./menus";
 import {Model} from "./layout/Model";
 import {loadDesktopHostConnection, onGetConfig} from "./boot/onGetConfig";
+import {exitAfterSettingsReset} from "./config/setting/reset";
 import {initBlockPopover} from "./block/popover";
 import {applyCloudUserState, onSetaccount} from "./config/tabs/accountUi";
 import {addScript, addScriptSync} from "./protyle/util/addScript";
@@ -29,13 +33,13 @@ import {
     downloadProgress,
     processSync,
     progressBackgroundTask,
-    progressLoading,
     progressStatus,
     processBacklinkIndexCommit,
     setDefRefCount,
     setRefDynamicText,
     transactionError
 } from "./dialog/processSystem";
+import {progressLoading} from "./dialog/progress";
 import {initMessage, showMessage} from "./dialog/message";
 import {getAllModels, getAllTabs} from "./layout/getAll";
 import {getLocalStorage, isChromeBrowser, isInMobileApp, isIOSDevice} from "./protyle/util/compatibility";
@@ -52,7 +56,7 @@ import {emitToPlugins} from "./plugin/EventBusCore";
 /// #if !BROWSER
 import {ipcRenderer} from "electron";
 /// #endif
-import {getDockByType} from "./layout/tabUtil";
+import {getDockByType, setTabPosition} from "./layout/tabUtil";
 import {Files} from "./layout/dock/Files";
 import {Tag} from "./layout/dock/Tag";
 import {appearanceConfigApi, refreshAppearance} from "./config/tabs/appearanceRuntime";
@@ -63,9 +67,12 @@ import {setTitle} from "./util/processTitle";
 import {ensureUILayout} from "./util/ensureUILayout";
 import {applyEntryVisibility} from "./config/entryVisibility/runtime";
 import {removeBlockPanelEditors} from "./block/panelRemoval";
+import {openChangelog} from "./boot/openChangelog";
+import {openFirstLaunchNotice} from "./boot/firstLaunchNotice";
 import {initializeEnglishCommandTranslations} from "./command/english";
 import {loadLanguages} from "./boot/loadLanguages";
 import {installPluginStorageFetchAppId} from "./util/fetchAppId";
+import {initWindowWithLoading} from "./boot/loading";
 
 export class App {
     public plugins: import("./plugin").Plugin[] = [];
@@ -84,6 +91,11 @@ export class App {
         mainWs.connect({
             id: genUUID(),
             type: "main",
+            callback: () => {
+                if (window.siyuan.isReady) {
+                    void refreshSettingConfig().catch(error => console.error("Could not refresh settings", error));
+                }
+            },
             msgCallback: (data) => {
                 emitToPlugins("ws-main", data);
                 if (data) {
@@ -93,6 +105,9 @@ export class App {
                             break;
                         case "setAppearance":
                             appearanceConfigApi.apply(data.data);
+                            break;
+                        case "settingChanged":
+                            void refreshSettingConfig(data.data.namespace, data.data.revision);
                             break;
                         case "refreshAppearance":
                             void refreshAppearance(data.data);
@@ -199,6 +214,7 @@ export class App {
                         case "closeBox":
                         case "removeBox":
                             closeNotebookHistoryDialogs(data.data.box);
+                            closeNotebookLivePhotos(data.data.box);
                             removeBlockPanelEditors({notebookId: data.data.box});
                             getAllTabs().forEach((tab) => {
                                 if (tab.headElement) {
@@ -339,7 +355,9 @@ export class App {
                         window.siyuan.user = userResponse.data && "userId" in userResponse.data ? userResponse.data : null;
                         await ensureOnboarding();
                         await setNoteBook();
-                        await onGetConfig(response.data.start, this);
+                        await initWindowWithLoading(() => onGetConfig(response.data.start, this), setTabPosition);
+                        await openFirstLaunchNotice();
+                        openChangelog();
                         onSetaccount();
                         setTitle("", true);
                         initMessage();
@@ -352,6 +370,7 @@ export class App {
                         /// #endif
                         window.siyuan.isReady = true;
                         mainWs.flushMainMessages();
+                        exitAfterSettingsReset();
                         fetchPost("/api/setting/getCloudUser", {});
                     });
                 });
@@ -361,7 +380,7 @@ export class App {
     }
 }
 
-installPluginStorageFetchAppId(window, Constants.SIYUAN_APPID, window.location.href);
+installPluginStorageFetchAppId(window, Constants.SIYUAN_APPID, document.baseURI, location.origin);
 const siyuanApp = new App();
 
 window.openFileByURL = (openURL) => {
@@ -396,6 +415,7 @@ window.openFileByURL = (openURL) => {
 };
 
 /// #if BROWSER
+registerDesktopBackNavigation();
 window.showKeyboardToolbar = () => {
     // 防止 Pad 端报错
 };

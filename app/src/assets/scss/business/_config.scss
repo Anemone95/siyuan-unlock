@@ -1,11 +1,43 @@
+.config-chatgpt__actions,
+.config-chatgpt__account {
+  gap: 8px;
+}
+
+.config-chatgpt__account {
+  align-items: center;
+}
+
+:root[data-theme-mode="dark"] .config-ai-decision__icon {
+  filter: invert(1);
+}
+
+.config-chatgpt__info {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.config-chatgpt__picker {
+  max-width: 100%;
+}
+
 .workspace-storage {
   &__header {
     flex-wrap: wrap;
+    // 未查看时头部下方没有内容，间距由各内容元素自行提供
+    padding-bottom: 0;
   }
 
   &__time {
     flex: 1 0 100%;
     text-align: right;
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  &__status:empty {
+    margin-top: 0;
   }
 
   &__content {
@@ -13,6 +45,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 16px;
+    margin-top: 16px;
     line-height: 1.5;
   }
 
@@ -36,6 +69,7 @@
 
   &__placeholder {
     position: relative;
+    margin-top: 16px;
   }
 
   &__total {
@@ -143,6 +177,45 @@
   }
 }
 
+.config-sync-field {
+  flex-wrap: wrap;
+
+  > .fn__flex-1 {
+    min-width: 0;
+  }
+
+  > label {
+    // 与输入框顶部对齐，避免提示文本出现后整行变高导致文案随之居中下移
+    align-self: flex-start;
+    padding-top: 4px;
+  }
+}
+
+.config-sync-form {
+  min-height: 0;
+}
+
+.config-sync-dialog {
+  max-height: 90vh;
+  max-height: 90dvh;
+}
+
+@media screen and (max-width: 750px) {
+  .config-sync-field {
+    > label {
+      // 窄屏下输入框整行落到文案下方，恢复默认的垂直居中
+      align-self: auto;
+      padding-top: 0;
+    }
+
+    > .fn__flex-1 {
+      flex: none;
+      width: 100%;
+      margin-top: 8px;
+    }
+  }
+}
+
 .config {
   &__tab-wrap {
     overflow: hidden;
@@ -167,7 +240,7 @@
     left: 0;
     right: 0;
     z-index: 1;
-    height: 24px;
+    height: var(--b3-ui-config-padding, 24px);
     touch-action: none;
 
     &::before {
@@ -187,8 +260,8 @@
   }
 
   &__tab-wrap > .config__tab-container:not([data-name="bazaar"]):not([data-name="assets"]) {
-    padding: 24px;
-    scroll-padding-block: 24px;
+    padding: var(--b3-ui-config-padding, 24px);
+    scroll-padding-block: var(--b3-ui-config-padding, 24px);
     height: 100%;
     flex-shrink: 0;
 
@@ -221,7 +294,7 @@
 
     .b3-label:not(.b3-label--inner) {
       margin: 0 16px;
-      padding: 16px 0;
+      padding: var(--b3-ui-config-row-padding, 16px 0);
     }
 
     label.b3-label:not(.b3-label--inner) {
@@ -255,12 +328,12 @@
   }
 
   &-group {
-    margin: 24px;
+    margin: var(--b3-ui-config-padding, 24px);
   }
 
   &-title {
     display: block;
-    margin: 24px 16px 16px 16px;
+    margin: var(--b3-ui-config-title-margin, 24px 16px 16px 16px);
     font-size: 15px;
     font-weight: bold;
 
@@ -373,7 +446,7 @@
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
-      padding: 24px 12px;
+      padding: var(--b3-ui-config-padding, 24px) 12px;
       box-sizing: border-box;
       border-right: 1px solid var(--b3-border-color);
 
@@ -385,6 +458,7 @@
       .config__tab-scroll {
         flex: 1;
         min-height: 0;
+        outline: none;
         overflow-y: auto;
         margin: 0 -12px 0 0;
         padding-right: 2px;
@@ -396,10 +470,10 @@
       .config__tab-title {
         display: flex;
         align-items: center;
-        height: 61px;
+        height: calc(37px + var(--b3-ui-config-padding, 24px));
         box-sizing: border-box;
-        margin: -24px -20px 0;
-        padding: 24px 24px 16px;
+        margin: calc(0px - var(--b3-ui-config-padding, 24px)) -20px 0;
+        padding: var(--b3-ui-config-padding, 24px) 24px 16px;
         touch-action: none;
 
         .b3-list-item__graphic {
@@ -412,8 +486,8 @@
       }
 
       .b3-list-item {
-        line-height: 32px;
-        margin: 8px;
+        line-height: var(--b3-ui-config-nav-height, 32px);
+        margin: var(--b3-ui-config-nav-margin, 8px);
 
         &__graphic {
           padding: 0 6px 0 4px;
@@ -545,6 +619,7 @@
     &__list {
       overflow: auto;
       flex: 1;
+      position: relative;
     }
 
     &__preview {
@@ -556,6 +631,22 @@
       flex: 1;
       padding: 0 8px;
       margin-top: 8px;
+      border-top: 1px solid var(--b3-border-color);
+    }
+
+    &__document,
+    &__pdf {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex-shrink: 0;
+      overflow: auto;
+    }
+
+    &__pdf {
+      position: relative;
+      overflow: hidden;
     }
   }
 
@@ -737,6 +828,7 @@
       align-items: center;
       gap: 4px;
       vertical-align: middle;
+      white-space: nowrap;
     }
 
     &__panel {
@@ -849,6 +941,40 @@
 
       > [data-bazaar-index] {
         cursor: default;
+      }
+    }
+
+    // 桌面端已下载卡片：图标右侧分为上下两块，名称/描述在上、操作按钮在下，按钮不跨到图标下方
+    &__panel[data-type="downloaded"] .config-bazaar__content .b3-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+
+      // 图标跨两行并垂直居中；同时去掉上下外边距，否则它会把第一行撑高、在描述下方留下空白
+      // 行是隐式的，跨行只能用 span 指定
+      > .b3-card__img {
+        align-self: center;
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        margin: 0 0 0 16px;
+      }
+
+      > .fn__flex-1 {
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      > .b3-card__actions--right {
+        grid-column: 2;
+        grid-row: 2;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        min-width: 0;
+        row-gap: 4px;
+        padding: 0 16px 16px;
+
+        > .config-bazaar__publish-controls {
+          margin-right: auto;
+        }
       }
     }
 
@@ -1036,6 +1162,11 @@
           line-height: 20px;
         }
 
+        &-type {
+          color: var(--b3-theme-on-surface);
+          margin-left: 4px;
+        }
+
         &-list {
           display: flex;
           flex-wrap: wrap;
@@ -1174,6 +1305,7 @@
 
               .b3-chip {
                 margin: 2px 0 2px 4px;
+                text-align: start;
               }
             }
           }
@@ -1201,6 +1333,21 @@
           }
         }
 
+        &__resource {
+          gap: 4px;
+          // 显式行高保持文字行框一致，大字号时随字号增大。
+          line-height: max(16px, 1em);
+
+          &-list {
+            gap: 8px 16px;
+          }
+        }
+
+        &__desc {
+          // 无预览图时与右侧信息栏顶部（.item__header + .fn__flex-1）对齐：8px 上外边距 + 21px 头部高度 + 16px 下外边距
+          margin-top: 45px;
+        }
+
         &__preview {
           width: 100%;
           height: 50%;
@@ -1223,6 +1370,11 @@
             cursor: zoom-out;
           }
         }
+      }
+
+      // 有预览图时由预览图的下外边距提供与描述之间的间距
+      .item__preview + .item__desc {
+        margin-top: 0;
       }
     }
   }
@@ -1322,6 +1474,10 @@
   }
 
   &-entry-visibility {
+    &__reset-orders {
+      max-width: 100%;
+    }
+
     &__view--mobile {
       .config-entry-visibility__search {
         margin: 0 8px;

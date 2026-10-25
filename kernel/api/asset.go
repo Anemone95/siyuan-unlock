@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,7 +33,6 @@ import (
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/siyuan/kernel/apicontract"
 	"github.com/siyuan-note/siyuan/kernel/model"
-	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
@@ -100,20 +100,20 @@ var fullReindexAssetContent = contractHandler(apicontract.FullReindexAssetConten
 	return apicontract.Success(apicontract.Null{})
 })
 
-var getImageOCRText = contractHandler(apicontract.GetImageOCRText, func(c *gin.Context, request apicontract.AssetOCRTextRequest) apicontract.Response[apicontract.AssetTextData] {
+var getImageOCRText = contractHandler(apicontract.GetImageOCRText, func(c *gin.Context, request apicontract.AssetOCRTextRequest) apicontract.Response[apicontract.ImageOCRTextData] {
 
 	if request.Path == nil {
-		return apicontract.Success(apicontract.AssetTextData{Text: ""})
+		return apicontract.Success(apicontract.ImageOCRTextData{Text: ""})
 	}
 	path := *request.Path
 
 	// 加密笔记本的资源不参与全局 OCR（OCR 文本存在全局 data/assets/ocr-texts.json）
-	if absPath, absErr := model.GetAssetAbsPathInBox(path, ""); absErr == nil && model.IsEncryptedAssetPath(absPath) {
-		return apicontract.Success(apicontract.AssetTextData{Text: ""})
+	if model.IsEncryptedOCRAsset(path) {
+		return apicontract.Success(apicontract.ImageOCRTextData{Text: ""})
 
 	}
 
-	return apicontract.Success(apicontract.AssetTextData{Text: util.GetAssetText(path)})
+	return apicontract.Success(apicontract.ImageOCRTextData{Text: util.GetAssetText(path), Failed: model.HasOCRFailure(path)})
 })
 
 var setImageOCRText = contractHandler(apicontract.SetImageOCRText, func(c *gin.Context, request apicontract.SetAssetOCRTextRequest) apicontract.Response[apicontract.Null] {
@@ -122,27 +122,22 @@ var setImageOCRText = contractHandler(apicontract.SetImageOCRText, func(c *gin.C
 	text := request.Text
 
 	// 加密笔记本的资源不参与全局 OCR
-	if absPath, absErr := model.GetAssetAbsPathInBox(path, ""); absErr == nil && model.IsEncryptedAssetPath(absPath) {
+	if model.IsEncryptedOCRAsset(path) {
 		return apicontract.Success(apicontract.Null{})
 	}
-	util.SetAssetText(path, text)
-
-	// 刷新 OCR 结果到数据库
-	util.NodeOCRQueueLock.Lock()
-	defer util.NodeOCRQueueLock.Unlock()
-	for _, id := range util.NodeOCRQueue {
-		sql.IndexNodeQueue(id)
-	}
-	util.NodeOCRQueue = nil
+	model.SetOCRAssetText(path, text)
 
 	return apicontract.Success(apicontract.Null{})
 })
 
 var ocr = contractHandler(apicontract.AssetOCR, func(c *gin.Context, request apicontract.AssetPathRequest) apicontract.Response[apicontract.AssetOCRData] {
 
-	path := request.Path
+	path, _, _ := strings.Cut(request.Path, "#")
 
 	// 加密笔记本的资源不参与全局 OCR
+	if model.IsEncryptedOCRAsset(path) {
+		return apicontract.FailureWithTimeout[apicontract.AssetOCRData](-1, model.Conf.Language(380), 3000)
+	}
 	absPath, err := model.GetAssetAbsPathInBox(path, "")
 	if err != nil {
 		return apicontract.Failure[apicontract.AssetOCRData](-1, err.Error())
@@ -150,16 +145,14 @@ var ocr = contractHandler(apicontract.AssetOCR, func(c *gin.Context, request api
 	if model.IsEncryptedAssetPath(absPath) {
 		return apicontract.FailureWithTimeout[apicontract.AssetOCRData](-1, model.Conf.Language(380), 3000)
 	}
-	if err = model.EnsureAssetLocal(absPath); err != nil {
-		return apicontract.Failure[apicontract.AssetOCRData](-1, err.Error())
-	}
-
-	ocrJSON, err := util.OcrAsset(path)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
+	defer cancel()
+	text, ocrJSON, err := model.OCRAsset(ctx, path)
 	if nil != err {
 		return apicontract.FailureWithTimeout[apicontract.AssetOCRData](-1, err.Error(), 7000)
 	}
 
-	return apicontract.Success(apicontract.AssetOCRData{Text: util.GetOcrJsonText(ocrJSON), OCRJSON: ocrJSON})
+	return apicontract.Success(apicontract.AssetOCRData{Text: text, OCRJSON: ocrJSON})
 })
 
 var renameAsset = contractHandler(apicontract.RenameAsset, func(c *gin.Context, request apicontract.RenameAssetRequest) apicontract.Response[apicontract.AssetRenameData] {
@@ -341,6 +334,7 @@ var removeUnusedAsset = contractHandler(apicontract.RemoveUnusedAsset, func(c *g
 })
 
 var removeUnusedAssets = contractHandler(apicontract.RemoveUnusedAssets, func(c *gin.Context, request apicontract.EmptyRequest) apicontract.Response[apicontract.AssetPathsData] {
+	defer beginSettingTask("clearingUnusedAssets")()
 
 	paths, err := model.RemoveUnusedAssets()
 	if err != nil {
@@ -361,10 +355,27 @@ var getUnusedAssets = contractHandler(apicontract.GetUnusedAssets, func(c *gin.C
 	const maxUnusedAssets = 512
 	if total > maxUnusedAssets {
 		unusedAssets = unusedAssets[:maxUnusedAssets]
-		util.PushMsg(fmt.Sprintf(model.Conf.Language(251), total, maxUnusedAssets), 5000)
+		// 提示仅发送给发起查询的前端；未提供应用标识的调用保留广播行为。
+		util.PushMsgWithApp(resolveRequestAppID(c, ""), fmt.Sprintf(model.Conf.Language(251), total, maxUnusedAssets), 5000)
 	}
 
 	return apicontract.Success(assetUnusedItems(unusedAssets))
+})
+
+var getUnusedEncryptedBoxAssets = contractHandler(apicontract.GetUnusedEncryptedBoxAssets, func(c *gin.Context, request apicontract.EncryptedBoxAssetsRequest) apicontract.Response[[]*apicontract.AssetUnusedItem] {
+	items, err := model.UnusedEncryptedBoxAssets(encryptedBoxRequestScope(c), request.Notebook)
+	if err != nil {
+		return apicontract.Failure[[]*apicontract.AssetUnusedItem](-1, err.Error())
+	}
+	return apicontract.Success(assetUnusedItems(items))
+})
+
+var removeUnusedEncryptedBoxAssets = contractHandler(apicontract.RemoveUnusedEncryptedBoxAssets, func(c *gin.Context, request apicontract.RemoveEncryptedBoxAssetsRequest) apicontract.Response[apicontract.AssetPathsData] {
+	paths, err := model.RemoveUnusedEncryptedBoxAssets(encryptedBoxRequestScope(c), request.Notebook, request.Paths)
+	if err != nil {
+		return apicontract.Failure[apicontract.AssetPathsData](-1, err.Error())
+	}
+	return apicontract.Success(apicontract.AssetPathsData{Paths: paths})
 })
 
 var getMissingAssets = contractHandler(apicontract.GetMissingAssets, func(c *gin.Context, request apicontract.EmptyRequest) apicontract.Response[[]*apicontract.AssetUnusedItem] {
@@ -401,12 +412,13 @@ var uploadCloud = contractHandler(apicontract.AssetUploadCloud, func(c *gin.Cont
 	ignorePushMsg := request.IgnorePushMsg
 	id := request.ID
 
-	count, err := model.UploadAssets2Cloud(id, ignorePushMsg)
+	app := resolveRequestAppID(c, "")
+	count, err := model.UploadAssets2CloudWithApp(id, ignorePushMsg, app)
 	if err != nil {
 		return apicontract.FailureWithTimeout[apicontract.Null](-1, err.Error(), 3000)
 	}
 
-	util.PushMsg(fmt.Sprintf(model.Conf.Language(41), count), 3000)
+	util.PushMsgWithApp(app, fmt.Sprintf(model.Conf.Language(41), count), 3000)
 
 	return apicontract.Success(apicontract.Null{})
 })
@@ -416,13 +428,14 @@ var uploadCloudByAssetsPaths = contractHandler(apicontract.AssetUploadCloudByAss
 	assets := append([]string(nil), request.Paths...)
 	ignorePushMsg := request.IgnorePushMsg
 
-	count, err := model.UploadAssets2CloudByAssetsPaths(assets, ignorePushMsg)
+	app := resolveRequestAppID(c, "")
+	count, err := model.UploadAssets2CloudByAssetsPathsWithApp(assets, ignorePushMsg, app)
 	if err != nil {
 		return apicontract.FailureWithTimeout[apicontract.Null](-1, err.Error(), 3000)
 	}
 
 	if !ignorePushMsg {
-		util.PushMsg(fmt.Sprintf(model.Conf.Language(41), count), 3000)
+		util.PushMsgWithApp(app, fmt.Sprintf(model.Conf.Language(41), count), 3000)
 	}
 
 	return apicontract.Success(apicontract.Null{})

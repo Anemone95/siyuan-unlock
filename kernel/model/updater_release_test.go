@@ -19,11 +19,84 @@ package model
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/siyuan-note/siyuan/kernel/conf"
+	"github.com/siyuan-note/siyuan/kernel/util"
 )
+
+func TestGetUpdatePackageURLs(t *testing.T) {
+	originalRegion := util.CurrentCloudRegion
+	t.Cleanup(func() { util.CurrentCloudRegion = originalRegion })
+	for _, region := range []int{0, 1} {
+		util.CurrentCloudRegion = region
+		for _, version := range []string{"3.8.7", "3.8.7-rc.1", "3.8.7-beta.4", "3.8.7-alpha.9"} {
+			for _, suffix := range []string{"win.exe", "win-arm64.exe", "mac.dmg", "mac-arm64.dmg"} {
+				pkgName := "siyuan-" + version + "-" + suffix
+				githubURL := "https://github.com/siyuan-note/siyuan/releases/download/v" + version + "/" + pkgName
+				want := []string{
+					"https://release.b3log.org/siyuan/" + pkgName,
+					"https://release.liuyun.io/siyuan/" + pkgName,
+					githubURL,
+				}
+				if got := getUpdatePackageURLs(pkgName, githubURL); !slices.Equal(got, want) {
+					t.Fatalf("region [%d] version [%s] package [%s]: got %v, want %v", region, version, pkgName, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestGetUpdatePackageURLsPreservesReleaseAssetURL(t *testing.T) {
+	const pkgName = "siyuan-3.8.7-alpha.9-win.exe"
+	const githubURL = "https://github.com/siyuan-note/siyuan/releases/download/custom-tag/" + pkgName
+	want := []string{
+		"https://release.b3log.org/siyuan/" + pkgName,
+		"https://release.liuyun.io/siyuan/" + pkgName,
+		githubURL,
+	}
+	if got := getUpdatePackageURLs(pkgName, githubURL); !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestStableUpdateUsesUnlockGitHubRelease(t *testing.T) {
+	originalConf := Conf
+	Conf = NewAppConf()
+	system := conf.NewSystem()
+	system.UpdateChannel = conf.UpdateChannelStable
+	Conf.System.Store(system)
+
+	githubReleasesLock.Lock()
+	originalReleases := cachedGitHubReleases
+	originalCacheTime := githubReleasesCacheTime
+	cachedGitHubReleases = []*githubRelease{{TagName: "v9.9.9-unlock.1", HTMLURL: "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"}}
+	githubReleasesCacheTime = time.Now().Unix()
+	githubReleasesLock.Unlock()
+
+	t.Cleanup(func() {
+		Conf = originalConf
+		githubReleasesLock.Lock()
+		cachedGitHubReleases = originalReleases
+		githubReleasesCacheTime = originalCacheTime
+		githubReleasesLock.Unlock()
+	})
+
+	release, err := getUpdateRelease(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if "9.9.9" != release.Version {
+		t.Fatalf("unexpected stable version: %q", release.Version)
+	}
+	const wantURL = "https://github.com/Anemone95/siyuan-unlock/releases/tag/v9.9.9-unlock.1"
+	if wantURL != release.ReleaseURL {
+		t.Fatalf("unexpected stable release URL: %q", release.ReleaseURL)
+	}
+}
 
 func TestIsReleaseAllowed(t *testing.T) {
 	tests := []struct {

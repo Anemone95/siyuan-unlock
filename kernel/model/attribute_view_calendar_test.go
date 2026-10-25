@@ -99,7 +99,7 @@ func TestAttributeViewCalendarRenderFilterSortAndExport(t *testing.T) {
 	dateValues, _ := attrView.GetKeyValues(date.ID)
 	primary := attrView.GetBlockKeyValues()
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
-	for i := 0; i < 120; i++ {
+	for i := range 120 {
 		id := ast.NewNodeID()
 		view.ItemIDs = append(view.ItemIDs, id)
 		primary.Values = append(primary.Values, &av.Value{ID: ast.NewNodeID(), KeyID: primary.Key.ID, BlockID: id,
@@ -136,6 +136,10 @@ func TestAttributeViewCalendarNewDateAndReadOnlySources(t *testing.T) {
 		if keyType == av.KeyTypeDate {
 			if err != nil || !values[key.ID].Date.IsNotTime || values[key.ID].Date.Content != 1756684800000 || values["other"].Text.Content != "template" {
 				t.Fatalf("calendar creation did not merge with template: %v", err)
+			}
+			key.RenderTemplate = "2026-09-30"
+			if err = setNewCalendarItemDate(attrView, "", view.ID, 0, values); err == nil || values[key.ID].Date.Content != 1756684800000 {
+				t.Fatal("computed date source must reject rescheduling and preserve values")
 			}
 		} else if err == nil || len(values) != 1 {
 			t.Fatal("system date source must reject rescheduling")

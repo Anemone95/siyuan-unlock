@@ -1,7 +1,8 @@
 import {revealTabsForTarget} from "../protyle/render/tabsRender";
 import {resolveVisibleListMindmapBlock} from "../protyle/render/listMindmap/render";
 import {hasClosestBlock, isInEmbedBlock} from "../protyle/util/hasClosest";
-import {focusByRange, getEditorRange} from "../protyle/util/selection";
+import {getEditorRange} from "../protyle/util/selection";
+import {focusByRange} from "../protyle/util/selectionOffsets";
 import {getStartScrollTop} from "./highlightPosition";
 import {isMobile} from "./functions";
 
@@ -100,7 +101,9 @@ export const scrollCenter = (
                 const hljsElement = blockElement.querySelector(".hljs");
                 const scrollLeft = hljsElement.scrollLeft;
                 const brElement = document.createElement("br");
-                range.insertNode(brElement);
+                // 滚动占位使用克隆 Range，避免扩展当前光标或改变文字选区。
+                const scrollRange = range.cloneRange();
+                scrollRange.insertNode(brElement);
                 brElement.scrollIntoView({block: position, behavior});
                 brElement.remove();
                 hljsElement.scrollLeft = scrollLeft;

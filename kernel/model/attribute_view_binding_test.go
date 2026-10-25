@@ -99,7 +99,7 @@ func TestAttributeViewBindingRejectsCrossBoundaryWrites(t *testing.T) {
 		t.Fatal("primary-key edit accepted a cross-boundary binding")
 	}
 	if err := addAttributeViewBlock0(fixture.attrView, 0, fixture.attrView.ID, "", "", "", "", ast.NewNodeID(),
-		fixture.tree.Root.ID, "", map[string]any{}, false, true, fixture.tree, nil, &insertAttrViewBlockResult{}); err == nil {
+		fixture.tree.Root.ID, "", map[string]any{}, false, true, false, fixture.tree, nil, &insertAttrViewBlockResult{}); err == nil {
 		t.Fatal("insert accepted a cross-boundary binding")
 	}
 	bindBlockAv0(nil, fixture.attrView.ID, fixture.tree.Root, fixture.tree)
@@ -137,7 +137,7 @@ func TestUpdateBoundBlockAvsAttributeDoesNotWriteOutsideBox(t *testing.T) {
 	util.Langs["en"][382] = "Cannot export database [%s]. Check database bindings and notebook location"
 	const encryptedBoxID = "20260909101000-encbox0"
 	markRuntimeEncryptedBox(encryptedBoxID)
-	setDEKForTest(encryptedBoxID, bytes.Repeat([]byte{0x73}, 32))
+	prepareUnlockedEncryptedBoxTest(t, encryptedBoxID, bytes.Repeat([]byte{0x73}, 32))
 	av.SetAVBoxID(fixture.attrView.ID, encryptedBoxID)
 	t.Cleanup(func() {
 		av.SetAVBoxID(fixture.attrView.ID, "")
