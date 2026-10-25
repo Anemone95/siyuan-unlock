@@ -1,0 +1,54 @@
+name: Rebase onto the official release
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: personal-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'Anemone95/siyuan-unlock'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Find a new official release
+        id: release
+        run: |
+          tag=$(gh api repos/siyuan-note/siyuan/releases/latest --jq .tag_name)
+          commit=$(gh api "repos/siyuan-note/siyuan/commits/$tag" --jq .sha)
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$commit...master" --jq .status)
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --json title --jq "map(select(.title == \"Rebase onto $tag\")) | length")
+          echo "master compared with $tag: $status; open rebase issues: $open"
+          # master 已包含该 tag，或冲突 Issue 仍打开时，本次无需同步。
+          if [ "$status" != ahead ] && [ "$status" != identical ] && [ "$open" = 0 ]; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.release.outputs.tag
+        with:
+          ref: master
+          fetch-depth: 0
+          path: siyuan
+          ssh-key: ${{ secrets.UPSTREAM_SYNC_SSH_KEY }}
+      - uses: actions/checkout@v4
+        if: steps.release.outputs.tag
+        with:
+          repository: Anemone95/siyuan-ios
+          ref: main
+          fetch-depth: 0
+          path: siyuan-ios
+          ssh-key: ${{ secrets.IOS_SYNC_SSH_KEY }}
+      - name: Rebase our commits and push
+        if: steps.release.outputs.tag
+        run: bash siyuan/scripts/personal-sync.sh "$TAG" siyuan siyuan-ios
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
